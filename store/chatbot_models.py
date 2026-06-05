@@ -1,0 +1,57 @@
+"""Chatbot configuration and conversation models."""
+
+import json
+from datetime import datetime, timezone
+from sqlalchemy import Column, DateTime, Integer, String, Text, JSON, Boolean
+from store.models import Base
+
+
+def _now():
+    return datetime.now(tz=timezone.utc)
+
+
+class ChatbotConfig(Base):
+    """Chatbot configuration stored in database."""
+
+    __tablename__ = "chatbot_config"
+
+    id = Column(Integer, primary_key=True, default=1)
+    llm_provider = Column(String(50), default="anthropic")
+    llm_model = Column(String(100), default="claude-3-5-sonnet-20241022")
+    llm_api_key = Column(String(500), nullable=True)  # Encrypted in production
+    system_prompt = Column(Text, default="")
+    tools = Column(JSON, default=list)  # List of tool names
+    guardrails = Column(JSON, default=dict)  # Safety constraints
+    enabled = Column(Boolean, default=True)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self):
+        return {
+            "llm_provider": self.llm_provider,
+            "llm_model": self.llm_model,
+            "system_prompt": self.system_prompt,
+            "tools": self.tools or [],
+            "guardrails": self.guardrails or {},
+            "enabled": self.enabled,
+        }
+
+
+class ChatMessage(Base):
+    """Chat message history."""
+
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_message = Column(Text, nullable=False)
+    assistant_message = Column(Text, nullable=True)
+    tools_used = Column(JSON, default=list)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_message": self.user_message,
+            "assistant_message": self.assistant_message,
+            "tools_used": self.tools_used or [],
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
