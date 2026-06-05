@@ -8,11 +8,11 @@ domains:
       - capacity_forecaster
       - storage_advisor
     monitored_db:
-      host: 10.0.1.189
+      host: <monitored_db_host>
       port: 5432
-      database: shopdb
-      user: monitoring
-      password: changeme
+      database: <monitored_db_name>
+      user: <monitored_db_user>
+      password: <monitored_db_password>
 
   performance:
     enabled: true
@@ -23,11 +23,11 @@ domains:
       - query_analyzer
       - cost_advisor
     monitored_db:
-      host: 10.0.1.189
+      host: <monitored_db_host>
       port: 5432
-      database: shopdb
-      user: monitoring
-      password: changeme
+      database: <monitored_db_name>
+      user: <monitored_db_user>
+      password: <monitored_db_password>
 
   locks:
     enabled: true
@@ -37,11 +37,11 @@ domains:
     tools:
       - lock_analyzer
     monitored_db:
-      host: 10.0.1.189
+      host: <monitored_db_host>
       port: 5432
-      database: shopdb
-      user: monitoring
-      password: changeme
+      database: <monitored_db_name>
+      user: <monitored_db_user>
+      password: <monitored_db_password>
 
 tools:
   capacity_forecaster:
@@ -90,16 +90,16 @@ tools:
 database:
   host: localhost
   port: 5432
-  database: agent_store
-  user: agent
-  password: changeme
+  database: <agent_store_db>
+  user: <agent_store_user>
+  password: <agent_store_password>
 
 monitored_db:
-  host: 10.0.1.189
+  host: <monitored_db_host>
   port: 5432
-  user: monitoring
-  password: changeme
-  database: shopdb
+  user: <monitored_db_user>
+  password: <monitored_db_password>
+  database: <monitored_db_name>
 
 api:
   host: 0.0.0.0

@@ -8,15 +8,14 @@ A production-ready domain-focused SQL database monitoring agent running on **arm
 
 ## Infrastructure
 
-| Host | Role | IP | Notes |
-|------|------|----|-------|
-| arm1 | Agent backend (this machine) | 10.0.2.176 | Runs sql_agent + agent_store PostgreSQL |
-| arm2 | Frontend dashboard | 10.0.2.11 | Consumes arm1:8084 API |
-| vm1 | Monitored database | 10.0.1.189 | PostgreSQL 16, port 5432 |
-| vm2 | Load / traffic generator | 10.0.1.214 | Used for pgbench load tests |
+| Host | Role | Notes |
+|------|------|-------|
+| arm1 | Agent backend (this machine) | Runs sql_agent + agent_store PostgreSQL on port 8084 |
+| arm2 | Frontend dashboard | Consumes arm1:8084 API via nginx reverse proxy |
+| vm1 | Monitored database | PostgreSQL 16 instance with pg_stat_statements |
+| vm2 | Load / traffic generator | Used for pgbench load tests |
 
-SSH key: `~/.ssh/id_ed25519`, user `ubuntu` on all hosts.
-Ansible inventory: `~/inventory/hosts.yml` and `~/agent-platform-infra/inventory/hosts.yml`.
+**Configuration:** See `config.yaml.example` for all host/port/database placeholders. SSH key and Ansible inventory locations are environment-specific.
 
 Existing Docker containers on arm1 (do not touch ports 8080-8083):
 - `orchestrator` → 8080 (nginx placeholder)
@@ -29,18 +28,17 @@ Existing Docker containers on arm1 (do not touch ports 8080-8083):
 ## Databases
 
 ### Agent store (local on arm1)
-- PostgreSQL 14, `localhost:5432`
-- Database: `agent_store`, user: `agent`, password: `changeme`
+- PostgreSQL 14, localhost:5432
 - Stores: `observation`, `analysis`, `insight`, `action_queue` tables
 - Initialized with: `python3 main.py init-db --config config.yaml`
+- Credentials: See `config.yaml` (configure from `config.yaml.example`)
 
 ### Monitored database (vm1)
-- PostgreSQL 16, `10.0.1.189:5432`
-- Database: `shopdb`, user: `monitoring`, password: `changeme`
-- Role: `pg_monitor` granted to `monitoring`
+- PostgreSQL 16 instance
+- Role: `pg_monitor` granted to monitoring user
 - Extension: `pg_stat_statements` enabled (tracks all queries)
-- Schema: `customers` (500 rows), `products` (5 rows), `orders` (2000 rows)
-- arm1 access: `10.0.2.0/24` allowed in `pg_hba.conf` (md5)
+- Schema: Contains customer, product, and order tables
+- Credentials: See `config.yaml` (configure from `config.yaml.example`)
 
 ---
 
@@ -202,26 +200,24 @@ pytest tests/test_e2e.py -v --tb=short
 
 ## Load testing (pgbench from vm2)
 
-```bash
-# Initialize pgbench schema on shopdb
-ssh -i ~/.ssh/id_ed25519 ubuntu@10.0.1.214 \
-  "pgbench -i -h 10.0.1.189 -U monitoring -d shopdb"
+Pgbench is configured to run automatically via systemd timer every 2 hours on vm2 with fluctuating load profiles (5-20 clients, varying threads and durations). This generates realistic, varying workloads for continuous monitoring.
 
-# Run load (10 clients, 2 threads, 300 seconds)
-ssh -i ~/.ssh/id_ed25519 ubuntu@10.0.1.214 \
-  "pgbench -h 10.0.1.189 -U monitoring -d shopdb -c 10 -j 2 -T 300"
+To manually run:
+```bash
+ssh ubuntu@vm2-host "pgbench -h vm1-host -U monitoring -d shopdb -c 10 -j 2 -T 300"
 ```
 
-Under load, the performance domain should escalate to `warning` (slow queries detected) and the locks domain may show `warning` or `critical` depending on contention.
+Under load, the performance domain escalates to `warning` (slow queries detected) and the locks domain may show `warning` or `critical` depending on contention.
 
 ---
 
 ## Dashboard (arm2)
 
-**URL:** https://sqlagent.dittmar.it
-**Login:** agentadmin / Poseidon#x10
+**Deployment:** Deployed on arm2 via nginx with HTTPS (Let's Encrypt).
 
-Deployed on arm2 (10.0.2.11) via nginx. All pages require JWT authentication via the `/api/login` endpoint. Token is stored in localStorage and automatically included in all API requests. Session timeout: 24 hours.
+**Authentication:** All pages require JWT bearer token authentication via the `/api/login` endpoint. Default credentials set in `api/auth.py` (update for production). Token is stored in localStorage and automatically included in all API requests. Session timeout: 24 hours.
+
+**API Base:** Nginx reverse proxy forwards `/api/*` requests to arm1:8084
 
 ### Frontend stack
 - React 18 + TypeScript
