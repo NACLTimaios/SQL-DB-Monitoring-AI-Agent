@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from store.models import Base
+from store import chatbot_models  # noqa: F401 - Import to register chatbot models with Base
 
 logger = logging.getLogger(__name__)
 
