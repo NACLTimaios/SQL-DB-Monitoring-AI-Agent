@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from api.auth import LoginRequest, Token, authenticate_user, create_access_token, verify_token
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,19 @@ app.add_middleware(
 class HITLDecision(BaseModel):
     decision: str  # "approve" | "reject" | "escalate"
     notes: str = ""
+
+
+class ChatMessage(BaseModel):
+    message: str
+
+
+class ChatbotConfigUpdate(BaseModel):
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    system_prompt: str | None = None
+    tools: list[str] | None = None
+    guardrails: dict | None = None
+    enabled: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +377,171 @@ def get_config_domains(_: str = Depends(verify_token)):
                 }
             )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Chatbot routes
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/chatbot/config")
+def get_chatbot_config(_: str = Depends(verify_token)):
+    """Get current chatbot configuration."""
+    from store.chatbot_models import ChatbotConfig
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        return {"error": "Database not available"}
+
+    session = session_factory()
+    try:
+        config = session.query(ChatbotConfig).first()
+        if config:
+            return config.to_dict()
+        else:
+            # Return default config
+            return {
+                "llm_provider": "anthropic",
+                "llm_model": "claude-3-5-sonnet-20241022",
+                "system_prompt": "You are a helpful database monitoring assistant.",
+                "tools": ["query_database", "get_metrics", "get_slow_queries", "get_table_stats", "check_locks"],
+                "guardrails": {
+                    "allow_writes": False,
+                    "allow_ddl": False,
+                    "query_timeout_seconds": 5,
+                    "max_rows_return": 1000,
+                },
+                "enabled": True,
+            }
+    finally:
+        session.close()
+
+
+@app.post("/api/chatbot/config")
+def update_chatbot_config(
+    config_update: ChatbotConfigUpdate, _: str = Depends(verify_token)
+):
+    """Update chatbot configuration (admin function)."""
+    from store.chatbot_models import ChatbotConfig
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    session = session_factory()
+    try:
+        config = session.query(ChatbotConfig).first()
+        if not config:
+            config = ChatbotConfig()
+
+        for key, value in config_update.dict(exclude_unset=True).items():
+            if value is not None and hasattr(config, key):
+                setattr(config, key, value)
+
+        session.add(config)
+        session.commit()
+        logger.info("Chatbot config updated")
+        return {"success": True, "config": config.to_dict()}
+    except Exception as exc:
+        session.rollback()
+        logger.error("Chatbot config update failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update config")
+    finally:
+        session.close()
+
+
+@app.post("/api/chatbot/chat")
+def chat_with_bot(message: ChatMessage, _: str = Depends(verify_token)):
+    """Send a message to the chatbot."""
+    from store.chatbot_models import ChatbotConfig, ChatMessage as ChatMessageModel
+    from orchestrator.chatbot_service import ChatbotService
+    import os
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    session = session_factory()
+    try:
+        config_row = session.query(ChatbotConfig).first()
+        config = config_row.to_dict() if config_row else {}
+
+        # Check if API key is set
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise HTTPException(status_code=503, detail="API key not configured")
+
+        # Get monitored DB config
+        db_config = _state.get("config", {}).get("monitored_db", {})
+
+        # Create chatbot service and get response
+        service = ChatbotService(config, db_config)
+        response = service.chat(message.message)
+
+        # Store in history
+        msg_record = ChatMessageModel(
+            user_message=message.message,
+            assistant_message=response.get("assistant_message", ""),
+            tools_used=response.get("tools_used", []),
+        )
+        session.add(msg_record)
+        session.commit()
+
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        session.rollback()
+        logger.error("Chatbot error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        session.close()
+
+
+@app.get("/api/chatbot/history")
+def get_chat_history(limit: int = 50, _: str = Depends(verify_token)):
+    """Get chat message history."""
+    from store.chatbot_models import ChatMessage as ChatMessageModel
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        return []
+
+    session = session_factory()
+    try:
+        messages = (
+            session.query(ChatMessageModel)
+            .order_by(ChatMessageModel.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [msg.to_dict() for msg in reversed(messages)]
+    finally:
+        session.close()
+
+
+@app.get("/api/chatbot/tools")
+def get_available_tools(_: str = Depends(verify_token)):
+    """Get list of available chatbot tools."""
+    from orchestrator.chatbot_service import AVAILABLE_TOOLS
+
+    return AVAILABLE_TOOLS
+
+
+@app.get("/api/chatbot/guardrails")
+def get_chatbot_guardrails(_: str = Depends(verify_token)):
+    """Get current safety guardrails."""
+    from store.chatbot_models import ChatbotConfig
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        return {}
+
+    session = session_factory()
+    try:
+        config = session.query(ChatbotConfig).first()
+        return config.guardrails if config else {}
+    finally:
+        session.close()
 
 
 # ---------------------------------------------------------------------------
