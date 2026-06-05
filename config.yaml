@@ -1,0 +1,110 @@
+domains:
+  capacity:
+    enabled: true
+    class: CapacityDomain
+    module: orchestrator.capacity_domain
+    interval_seconds: 60
+    tools:
+      - capacity_forecaster
+      - storage_advisor
+    monitored_db:
+      host: 10.0.1.189
+      port: 5432
+      database: shopdb
+      user: monitoring
+      password: changeme
+
+  performance:
+    enabled: true
+    class: PerformanceDomain
+    module: orchestrator.performance_domain
+    interval_seconds: 300
+    tools:
+      - query_analyzer
+      - cost_advisor
+    monitored_db:
+      host: 10.0.1.189
+      port: 5432
+      database: shopdb
+      user: monitoring
+      password: changeme
+
+  locks:
+    enabled: true
+    class: LocksDomain
+    module: orchestrator.locks_domain
+    interval_seconds: 10
+    tools:
+      - lock_analyzer
+    monitored_db:
+      host: 10.0.1.189
+      port: 5432
+      database: shopdb
+      user: monitoring
+      password: changeme
+
+tools:
+  capacity_forecaster:
+    module: tools.capacity_tools
+    class: CapacityForecaster
+    capability_tags:
+      - forecasting
+      - trending
+    depends_on: []
+    timeout_seconds: 2
+
+  storage_advisor:
+    module: tools.capacity_tools
+    class: StorageAdvisor
+    capability_tags:
+      - recommendations
+    depends_on:
+      - capacity_forecaster
+    timeout_seconds: 1
+
+  query_analyzer:
+    module: tools.performance_tools
+    class: QueryAnalyzer
+    capability_tags:
+      - query_profiling
+    depends_on: []
+    timeout_seconds: 5
+
+  cost_advisor:
+    module: tools.performance_tools
+    class: CostAdvisor
+    capability_tags:
+      - cost_analysis
+    depends_on:
+      - query_analyzer
+    timeout_seconds: 2
+
+  lock_analyzer:
+    module: tools.locks_tools
+    class: LockAnalyzer
+    capability_tags:
+      - lock_analysis
+    depends_on: []
+    timeout_seconds: 1
+
+database:
+  host: localhost
+  port: 5432
+  database: agent_store
+  user: agent
+  password: changeme
+
+monitored_db:
+  host: 10.0.1.189
+  port: 5432
+  user: monitoring
+  password: changeme
+  database: shopdb
+
+api:
+  host: 0.0.0.0
+  port: 8084
+
+logging:
+  level: INFO
+  file: logs/agent.log

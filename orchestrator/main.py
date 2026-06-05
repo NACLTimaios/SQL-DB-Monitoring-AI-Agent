@@ -1,0 +1,159 @@
+"""Orchestrator: main run-loop that drives all domains on their schedules."""
+
+import logging
+import signal
+import time
+from datetime import datetime, timezone
+from typing import Optional
+
+from config.loader import ConfigLoader
+from orchestrator.aggregator import aggregate_insights
+from orchestrator.domains import DomainRegistry
+from store import get_engine, init_db, get_session
+
+logger = logging.getLogger(__name__)
+
+
+class Orchestrator:
+    """Drives all monitoring domains and persists results.
+
+    Usage::
+
+        orchestrator = Orchestrator("config.yaml")
+        orchestrator.run()
+    """
+
+    def __init__(self, config_path: str) -> None:
+        loader = ConfigLoader()
+        self._config = loader.load(config_path)
+        self._running = False
+        self._cycle_count = 0
+
+        # Set up storage.
+        db_cfg = self._config.get("database", {})
+        db_url = (
+            f"postgresql://{db_cfg['user']}:{db_cfg['password']}"
+            f"@{db_cfg['host']}:{db_cfg['port']}/{db_cfg['database']}"
+        )
+        self._engine = get_engine(db_url)
+        init_db(self._engine)
+        self._session_factory = get_session(self._engine)
+
+        # Load domains.
+        self._registry = DomainRegistry(self._config)
+        self._domains = self._registry.load()
+        logger.info("Orchestrator initialised with %d domains", len(self._domains))
+
+        # Wire SIGTERM handler.
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def run(self) -> None:
+        """Block and run the main loop until stopped."""
+        self._running = True
+        logger.info("Orchestrator starting main loop")
+        while self._running:
+            self._tick()
+            time.sleep(1)
+
+    def stop(self) -> None:
+        """Request a graceful stop."""
+        logger.info("Orchestrator stopping")
+        self._running = False
+
+    def run_once(self) -> dict:
+        """Force-run all domains once and return aggregated result (for testing)."""
+        results: dict = {}
+        for domain in self._domains:
+            try:
+                result = domain.analyze()
+                domain.mark_ran()
+                results[domain.name] = result
+            except Exception as exc:
+                logger.error("Domain '%s' error: %s", domain.name, exc, exc_info=True)
+                results[domain.name] = {"error": str(exc)}
+        return aggregate_insights(results)
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _tick(self) -> None:
+        cycle_start = time.monotonic()
+        results: dict = {}
+
+        for domain in self._domains:
+            if not domain.should_run():
+                continue
+            try:
+                t0 = time.monotonic()
+                result = domain.analyze()
+                elapsed = time.monotonic() - t0
+                domain.mark_ran()
+                results[domain.name] = result
+                logger.debug(
+                    "Domain '%s' completed in %.3fs", domain.name, elapsed
+                )
+            except Exception as exc:
+                logger.error(
+                    "Domain '%s' raised: %s", domain.name, exc, exc_info=True
+                )
+                results[domain.name] = {"error": str(exc)}
+
+        if results:
+            aggregated = aggregate_insights(results)
+            self._cycle_count += 1
+            cycle_elapsed = time.monotonic() - cycle_start
+            logger.info(
+                "Cycle #%d | status=%s | domains=%s | %.3fs",
+                self._cycle_count,
+                aggregated.get("status"),
+                list(results.keys()),
+                cycle_elapsed,
+            )
+            self._persist(results, aggregated)
+
+    def _persist(self, domain_results: dict, aggregated: dict) -> None:
+        """Persist insights to the database."""
+        from store.models import Insight
+        from store.repository import Repository
+
+        session = self._session_factory()
+        repo = Repository(session)
+        try:
+            for domain_name, result in domain_results.items():
+                if "error" in result:
+                    continue
+                insight = Insight(
+                    domain=domain_name,
+                    title=f"{domain_name} cycle",
+                    description=str(result),
+                    severity=result.get("status", "info"),
+                    status="pending",
+                )
+                repo.save_insight(insight)
+            session.commit()
+        except Exception as exc:
+            logger.error("Failed to persist insights: %s", exc, exc_info=True)
+            session.rollback()
+        finally:
+            session.close()
+
+    def _handle_sigterm(self, signum: int, frame: object) -> None:
+        logger.info("SIGTERM received — stopping orchestrator")
+        self.stop()
+
+
+# ---------------------------------------------------------------------------
+# Direct entry-point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import sys
+
+    logging.basicConfig(level=logging.INFO)
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
+    Orchestrator(config_path).run()
