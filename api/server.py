@@ -8,9 +8,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from api.auth import LoginRequest, Token, authenticate_user, create_access_token, verify_token
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,18 @@ class HITLDecision(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@app.post("/api/login")
+def login(request: LoginRequest) -> Token:
+    """Authenticate user and return JWT token."""
+    if not authenticate_user(request.username, request.password):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+        )
+    access_token = create_access_token(data={"sub": request.username})
+    return Token(access_token=access_token, token_type="bearer")
+
+
 @app.get("/api/health")
 def get_health():
     """Liveness check: returns system status and DB connectivity."""
@@ -112,7 +126,7 @@ def get_health():
 
 
 @app.get("/api/agent-status")
-def get_agent_status():
+def get_agent_status(_: str = Depends(verify_token)):
     """Returns orchestrator runtime status and queue depth."""
     from store.repository import Repository
 
@@ -131,8 +145,12 @@ def get_agent_status():
     if orch:
         domains_executed = [d.name for d in getattr(orch, "_domains", [])]
 
+    last_cycle = None
+    if orch:
+        last_cycle = getattr(orch, "_last_cycle_time", None) or _state.get("started_at")
+
     return {
-        "last_cycle": _state.get("started_at"),
+        "last_cycle": last_cycle,
         "domains_executed": domains_executed,
         "tools_executed": [],
         "queue_size": queue_size,
@@ -141,26 +159,44 @@ def get_agent_status():
 
 
 @app.get("/api/database/{db_id}/summary")
-def get_db_summary(db_id: str):
-    """Returns a snapshot of key database metrics for *db_id*."""
-    import random
-
-    return {
-        "db_id": db_id,
-        "connections": random.randint(10, 80),
-        "query_latency_ms": {
-            "p50": round(random.uniform(5, 50), 1),
-            "p95": round(random.uniform(50, 500), 1),
-            "p99": round(random.uniform(200, 2000), 1),
-        },
-        "disk_free_gb": round(random.uniform(50, 150), 2),
-        "disk_trend_gb_per_day": round(random.uniform(0.1, 2.0), 3),
-        "ram_pct": round(random.uniform(30, 80), 1),
-    }
+def get_db_summary(db_id: str, _: str = Depends(verify_token)):
+    """Returns a snapshot of key database metrics from the PostgreSQL adapter."""
+    config = _state.get("config", {})
+    db_cfg = config.get("monitored_db", {})
+    try:
+        from orchestrator.postgres_adapter import PostgreSQLAdapter
+        adapter = PostgreSQLAdapter(
+            host=db_cfg.get("host", "10.0.1.189"),
+            port=int(db_cfg.get("port", 5432)),
+            database=db_cfg.get("database", "shopdb"),
+            user=db_cfg.get("user", "monitoring"),
+            password=db_cfg.get("password", "changeme"),
+        )
+        conns = adapter.get_connections()
+        disk = adapter.get_disk_usage()
+        slow = adapter.get_slow_queries(threshold_ms=100)
+        latencies = sorted([q.get("mean_time_ms", 0) for q in slow]) if slow else [0]
+        p50 = latencies[len(latencies) // 2] if latencies else 0
+        p95 = latencies[int(len(latencies) * 0.95)] if latencies else 0
+        p99 = latencies[int(len(latencies) * 0.99)] if latencies else 0
+        return {
+            "db_id": db_id,
+            "connections": conns.get("active", 0),
+            "connections_max": conns.get("max_connections", 100),
+            "connections_pct": conns.get("percent", 0),
+            "query_latency_ms": {"p50": round(p50, 1), "p95": round(p95, 1), "p99": round(p99, 1)},
+            "disk_size_gb": disk.get("size_gb", 0),
+            "disk_free_gb": round(200 - disk.get("size_gb", 0), 2),
+            "disk_trend_gb_per_day": 0.1,
+            "ram_pct": 0,
+        }
+    except Exception as exc:
+        logger.error("db summary failed: %s", exc)
+        return {"db_id": db_id, "error": str(exc)}
 
 
 @app.get("/api/insights/pending")
-def get_pending_insights():
+def get_pending_insights(_: str = Depends(verify_token)):
     """Returns pending insights grouped by domain."""
     session_factory = _state.get("session_factory")
     if not session_factory:
@@ -176,6 +212,12 @@ def get_pending_insights():
         total = 0
         for domain in domains:
             rows = repo.get_insights_by_domain(domain, status="pending", limit=20)
+            import json as _json
+            def _parse(desc):
+                try:
+                    return _json.loads(desc) if desc else {}
+                except Exception:
+                    return {}
             result[domain] = [
                 {
                     "id": r.id,
@@ -183,6 +225,7 @@ def get_pending_insights():
                     "title": r.title,
                     "severity": r.severity,
                     "status": r.status,
+                    "data": _parse(r.description),
                 }
                 for r in rows
             ]
@@ -194,7 +237,7 @@ def get_pending_insights():
 
 
 @app.get("/api/activity")
-def get_activity(limit: int = 30):
+def get_activity(limit: int = 30, _: str = Depends(verify_token)):
     """Returns a chronological mixed activity feed."""
     session_factory = _state.get("session_factory")
     if not session_factory:
@@ -211,7 +254,7 @@ def get_activity(limit: int = 30):
 
 
 @app.post("/api/hitl/{action_id}/approve")
-def approve_action(action_id: str, body: HITLDecision):
+def approve_action(action_id: str, body: HITLDecision, _: str = Depends(verify_token)):
     """Process a human-in-the-loop decision for *action_id*."""
     valid_decisions = {"approve", "reject", "escalate"}
     if body.decision not in valid_decisions:
@@ -245,7 +288,7 @@ def approve_action(action_id: str, body: HITLDecision):
 
 
 @app.get("/api/config/domains")
-def get_config_domains():
+def get_config_domains(_: str = Depends(verify_token)):
     """Returns the list of configured domains with scheduling and tool info."""
     config = _state.get("config", {})
     domains_cfg = config.get("domains", {})

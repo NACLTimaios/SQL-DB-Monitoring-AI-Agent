@@ -28,6 +28,7 @@ class Orchestrator:
         self._config = loader.load(config_path)
         self._running = False
         self._cycle_count = 0
+        self._last_cycle_time: str | None = None
 
         # Set up storage.
         db_cfg = self._config.get("database", {})
@@ -106,6 +107,7 @@ class Orchestrator:
         if results:
             aggregated = aggregate_insights(results)
             self._cycle_count += 1
+            self._last_cycle_time = datetime.now(timezone.utc).isoformat()
             cycle_elapsed = time.monotonic() - cycle_start
             logger.info(
                 "Cycle #%d | status=%s | domains=%s | %.3fs",
@@ -115,6 +117,32 @@ class Orchestrator:
                 cycle_elapsed,
             )
             self._persist(results, aggregated)
+
+    @staticmethod
+    def _make_title(domain_name: str, result: dict) -> str:
+        if domain_name == "locks":
+            analysis = result.get("analysis", {})
+            count = analysis.get("waiting_session_count", 0)
+            risk = analysis.get("risk_level", "healthy").upper()
+            if count > 0:
+                chains = analysis.get("blocking_chains_count", 0)
+                return f"Locks: {count} waiting session{'s' if count != 1 else ''}" + (
+                    f", {chains} blocking chain{'s' if chains != 1 else ''}" if chains else ""
+                ) + f" — {risk}"
+            return "Locks: No contention"
+        if domain_name == "capacity":
+            obs = result.get("observations", {})
+            forecast = result.get("forecast", {})
+            size = obs.get("disk_size_gb", 0)
+            days = forecast.get("days_remaining", 0)
+            conns = obs.get("connections_active", 0)
+            conns_max = obs.get("connections_max", 100)
+            return f"Capacity: {size:.3f} GB used · {conns}/{conns_max} conns · {days} days to full"
+        if domain_name == "performance":
+            analysis = result.get("analysis", {})
+            count = analysis.get("slow_query_count", 0)
+            return f"Performance: {count} slow quer{'ies' if count != 1 else 'y'} detected"
+        return f"{domain_name} cycle"
 
     def _persist(self, domain_results: dict, aggregated: dict) -> None:
         """Persist insights to the database."""
@@ -127,10 +155,11 @@ class Orchestrator:
             for domain_name, result in domain_results.items():
                 if "error" in result:
                     continue
+                import json as _json
                 insight = Insight(
                     domain=domain_name,
-                    title=f"{domain_name} cycle",
-                    description=str(result),
+                    title=self._make_title(domain_name, result),
+                    description=_json.dumps(result, default=str),
                     severity=result.get("status", "info"),
                     status="pending",
                 )
