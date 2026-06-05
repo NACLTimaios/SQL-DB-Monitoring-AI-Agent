@@ -182,3 +182,59 @@ class Repository:
             action.decision_notes = notes
         logger.info("Action %s status → %s", action_id, status)
         return True
+
+    def get_incidents_timeline(
+        self, hours: int = 24, severity: str = "warning"
+    ) -> list[dict]:
+        """Return incidents (critical/warning insights) within the past N hours.
+
+        Groups by hour and returns count, latest severity, and sample events.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(tz=timezone.utc)
+        cutoff = now - timedelta(hours=hours)
+
+        # Fetch all critical/warning insights in the time window
+        rows = (
+            self._session.query(Insight)
+            .filter(
+                Insight.timestamp >= cutoff,
+                Insight.severity.in_(["critical", "warning"]),
+            )
+            .order_by(Insight.timestamp.asc())
+            .all()
+        )
+
+        # Group by hour
+        buckets: dict[str, list] = {}
+        for insight in rows:
+            hour_key = insight.timestamp.strftime("%Y-%m-%dT%H:00:00Z")
+            if hour_key not in buckets:
+                buckets[hour_key] = []
+            buckets[hour_key].append(
+                {
+                    "timestamp": insight.timestamp.isoformat(),
+                    "domain": insight.domain,
+                    "severity": insight.severity,
+                    "title": insight.title,
+                }
+            )
+
+        # Return bucketed data
+        result = []
+        for hour_key in sorted(buckets.keys()):
+            events = buckets[hour_key]
+            critical_count = sum(1 for e in events if e["severity"] == "critical")
+            warning_count = sum(1 for e in events if e["severity"] == "warning")
+            result.append(
+                {
+                    "hour": hour_key,
+                    "critical_count": critical_count,
+                    "warning_count": warning_count,
+                    "total_count": len(events),
+                    "sample_events": events[:3],  # First 3 events in this hour
+                }
+            )
+
+        return result

@@ -287,6 +287,32 @@ def approve_action(action_id: str, body: HITLDecision, _: str = Depends(verify_t
         session.close()
 
 
+@app.get("/api/incidents/timeline")
+def get_incidents_timeline(hours: int = 24, _: str = Depends(verify_token)):
+    """Returns timeline of incidents (critical/warning events) for the past N hours."""
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        return {"timeline": [], "hours": hours, "total_incidents": 0}
+
+    # Validate hours parameter
+    hours = max(1, min(hours, 720))  # Clamp to 1-720 hours
+
+    from store.repository import Repository
+
+    session = session_factory()
+    try:
+        repo = Repository(session)
+        timeline = repo.get_incidents_timeline(hours=hours)
+        total_incidents = sum(b["total_count"] for b in timeline)
+        return {
+            "timeline": timeline,
+            "hours": hours,
+            "total_incidents": total_incidents,
+        }
+    finally:
+        session.close()
+
+
 @app.get("/api/hitl/pending")
 def get_pending_hitl_actions(_: str = Depends(verify_token)):
     """Returns pending HITL (human-in-the-loop) action queue items."""
