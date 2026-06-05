@@ -9,6 +9,7 @@ from typing import Optional
 from config.loader import ConfigLoader
 from orchestrator.aggregator import aggregate_insights
 from orchestrator.domains import DomainRegistry
+from orchestrator.hitl_generator import HITLGenerator
 from store import get_engine, init_db, get_session
 
 logger = logging.getLogger(__name__)
@@ -145,13 +146,14 @@ class Orchestrator:
         return f"{domain_name} cycle"
 
     def _persist(self, domain_results: dict, aggregated: dict) -> None:
-        """Persist insights to the database."""
+        """Persist insights and HITL actions to the database."""
         from store.models import Insight
         from store.repository import Repository
 
         session = self._session_factory()
         repo = Repository(session)
         try:
+            # Generate insights
             for domain_name, result in domain_results.items():
                 if "error" in result:
                     continue
@@ -164,6 +166,20 @@ class Orchestrator:
                     status="pending",
                 )
                 repo.save_insight(insight)
+
+            # Generate HITL actions based on domain results
+            hitl_gen = HITLGenerator(repo)
+            actions = hitl_gen.generate_actions_from_insights(domain_results)
+            for action in actions:
+                repo.save_action(action)
+                logger.debug("Generated HITL action: %s", action.action_type)
+
+            # Generate random synthetic issue for dashboard testing (10% chance)
+            random_issue = hitl_gen.generate_random_issue()
+            if random_issue:
+                repo.save_action(random_issue)
+                logger.debug("Generated random HITL issue: %s", random_issue.action_type)
+
             session.commit()
         except Exception as exc:
             logger.error("Failed to persist insights: %s", exc, exc_info=True)

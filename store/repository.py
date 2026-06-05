@@ -41,6 +41,14 @@ class Repository:
             "Queued insight: domain=%s severity=%s", insight.domain, insight.severity
         )
 
+    def save_action(self, action: ActionQueue) -> None:
+        """Persist an action queue entry."""
+        self._session.add(action)
+        logger.debug(
+            "Queued action: domain=%s type=%s risk=%s",
+            action.domain, action.action_type, action.risk_level
+        )
+
     # ------------------------------------------------------------------
     # Reads
     # ------------------------------------------------------------------
@@ -147,6 +155,16 @@ class Repository:
             self._session.query(ActionQueue)
             .filter(ActionQueue.status == "pending")
             .count()
+        )
+
+    def get_pending_actions(self, limit: int = 20) -> list[ActionQueue]:
+        """Return up to *limit* pending action queue items."""
+        return (
+            self._session.query(ActionQueue)
+            .filter(ActionQueue.status == "pending")
+            .order_by(ActionQueue.created_at.desc())
+            .limit(limit)
+            .all()
         )
 
     def get_action(self, action_id: str) -> ActionQueue | None:
