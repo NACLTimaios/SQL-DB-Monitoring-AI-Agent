@@ -287,6 +287,38 @@ def approve_action(action_id: str, body: HITLDecision, _: str = Depends(verify_t
         session.close()
 
 
+@app.get("/api/hitl/pending")
+def get_pending_hitl_actions(_: str = Depends(verify_token)):
+    """Returns pending HITL (human-in-the-loop) action queue items."""
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        return {"actions": [], "total_pending": 0}
+
+    from store.repository import Repository
+
+    session = session_factory()
+    try:
+        repo = Repository(session)
+        actions = repo.get_pending_actions(limit=50)
+        return {
+            "actions": [
+                {
+                    "id": a.id,
+                    "domain": a.domain,
+                    "action_type": a.action_type,
+                    "risk_level": a.risk_level,
+                    "payload": a.payload,
+                    "status": a.status,
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                }
+                for a in actions
+            ],
+            "total_pending": repo.count_pending_approvals(),
+        }
+    finally:
+        session.close()
+
+
 @app.get("/api/config/domains")
 def get_config_domains(_: str = Depends(verify_token)):
     """Returns the list of configured domains with scheduling and tool info."""
