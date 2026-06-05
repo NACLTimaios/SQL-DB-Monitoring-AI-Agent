@@ -125,17 +125,35 @@ pkill -f "python3 main.py run"
 
 ## API endpoints (port 8084)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | System health: orchestrator running, DB connected |
-| GET | `/api/agent-status` | Last cycle time, domains executed, overall status |
-| GET | `/api/database/{db_id}/summary` | Connections, latency, disk, RAM |
-| GET | `/api/insights/pending` | Insights grouped by domain (capacity/performance/locks) |
-| GET | `/api/activity?limit=30` | Chronological feed of Observation/Analysis/Insight |
-| POST | `/api/hitl/{action_id}/approve` | Approve/reject/escalate a queued action |
-| GET | `/api/config/domains` | Enabled domains with intervals and tools |
+| Method | Path | Description | Auth Required |
+|--------|------|-------------|---|
+| POST | `/api/login` | Authenticate and receive JWT token | No |
+| GET | `/api/health` | System health: orchestrator running, DB connected | No |
+| GET | `/api/agent-status` | Last cycle time, domains executed, overall status | **Yes** |
+| GET | `/api/database/{db_id}/summary` | Connections, latency, disk, RAM | **Yes** |
+| GET | `/api/insights/pending` | Insights grouped by domain (capacity/performance/locks) | **Yes** |
+| GET | `/api/activity?limit=30` | Chronological feed of Observation/Analysis/Insight | **Yes** |
+| POST | `/api/hitl/{action_id}/approve` | Approve/reject/escalate a queued action | **Yes** |
+| GET | `/api/config/domains` | Enabled domains with intervals and tools | **Yes** |
 
-Quick health check: `curl -s http://localhost:8084/api/health | python3 -m json.tool`
+### Authentication
+
+Protected endpoints require JWT bearer token in `Authorization` header:
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8084/api/agent-status
+```
+
+Get token via login endpoint:
+```bash
+curl -X POST http://localhost:8084/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"agentadmin","password":"Poseidon#x10"}'
+```
+
+Credentials:
+- **Username:** `agentadmin`
+- **Password:** `Poseidon#x10` (hashed with argon2id)
+- **Token expiry:** 24 hours
 
 ---
 
@@ -195,6 +213,39 @@ ssh -i ~/.ssh/id_ed25519 ubuntu@10.0.1.214 \
 ```
 
 Under load, the performance domain should escalate to `warning` (slow queries detected) and the locks domain may show `warning` or `critical` depending on contention.
+
+---
+
+## Dashboard (arm2)
+
+**URL:** https://sqlagent.dittmar.it
+**Login:** agentadmin / Poseidon#x10
+
+Deployed on arm2 (10.0.2.11) via nginx. All pages require JWT authentication via the `/api/login` endpoint. Token is stored in localStorage and automatically included in all API requests. Session timeout: 24 hours.
+
+### Frontend stack
+- React 18 + TypeScript
+- Tailwind CSS 3 (custom dark theme)
+- Axios with JWT interceptors
+- Vite 5 build system
+
+### Key components
+- **Login.tsx** — Form-based authentication with error handling
+- **App.tsx** — Auth state management, conditional rendering
+- **Header.tsx** — Status badges, last cycle time, logout button
+- **LocksPanel.tsx** — Shows waiting sessions with details, blocking chains
+- **CapacityPanel.tsx** — Disk usage progress, connections, cache hit ratios, forecast
+- **PerformancePanel.tsx** — Slow query count, top slow queries list
+- **InsightsAlerts.tsx** — Collapsible domain cards with severity distribution
+- **ActivityFeed.tsx** — Timeline of observations/analyses/insights
+
+### Build & Deploy
+```bash
+cd ~/dashboard
+npm run build          # outputs to dist/
+sudo cp -r dist/* /var/www/dashboard/
+sudo nginx -t && sudo systemctl reload nginx
+```
 
 ---
 
