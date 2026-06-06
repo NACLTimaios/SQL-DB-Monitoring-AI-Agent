@@ -20,8 +20,18 @@ The chatbot system has been fully implemented with all backend components tested
   - Proper timezone-aware timestamps
   - to_dict() serialization methods
 
+- ✅ **Multi-Provider LLM Support** (`orchestrator/llm_providers.py`) - NEW
+  - Abstract LLMProvider base class with unified interface
+  - AnthropicProvider (Claude API)
+  - GoogleProvider (Gemini API)
+  - OpenAIProvider (GPT models)
+  - Factory pattern for dynamic provider selection
+  - Provider-specific tool/function calling handling
+  - Seamless switching between providers
+
 - ✅ **Chatbot Service** (`orchestrator/chatbot_service.py`)
-  - Claude API integration via Anthropic SDK
+  - Provider-agnostic chat interface
+  - Shared tool execution logic across all providers
   - 5 database tools with safe execution
   - Guardrails enforcement (SELECT-only, no DDL)
   - Query timeout and row limit protection
@@ -115,13 +125,30 @@ python3 scripts/test_chatbot.py
 
 ### Required (Must Do)
 
-1. **Set Anthropic API Key on arm1**
+1. **Choose and Configure an LLM Provider**
+
+   **Option A: Anthropic Claude (Default)**
    ```bash
+   pip install anthropic
    export ANTHROPIC_API_KEY="sk-ant-..."
    ```
-   Or add to `.env` file and source it before starting the API.
-   
-   **Get API Key:** https://console.anthropic.com/account/keys
+   Get key: https://console.anthropic.com/account/keys
+
+   **Option B: Google Gemini (Recommended for cost)**
+   ```bash
+   pip install google-generativeai
+   export GOOGLE_API_KEY="AIzaSy..."
+   ```
+   Get key: https://makersuite.google.com/app/apikey
+
+   **Option C: OpenAI GPT (For GPT-4/GPT-5)**
+   ```bash
+   pip install openai
+   export OPENAI_API_KEY="sk-..."
+   ```
+   Get key: https://platform.openai.com/api-keys
+
+   **See LLM_PROVIDER_SETUP.md for detailed setup instructions.**
 
 2. **Deploy Components to arm2**
    ```bash
