@@ -18,20 +18,33 @@ The chatbot system is fully implemented and tested. All backend components and f
   - Tools used tracking
   - Timestamp for each interaction
 
-#### 2. Chatbot Service
-**File: `orchestrator/chatbot_service.py`**
-- `ChatbotService` class with Claude API integration
-- 5 built-in database tools:
-  - `query_database`: Execute safe SELECT queries with guardrails
-  - `get_metrics`: Current connections, disk, cache hit ratio
-  - `get_slow_queries`: Performance insights from pg_stat_statements
-  - `get_table_stats`: Table sizes and row counts
-  - `check_locks`: Blocking sessions and lock contention
-- **Guardrails enforced**:
-  - SELECT-only queries (no INSERT/UPDATE/DELETE)
-  - No DDL (CREATE/ALTER/DROP)
-  - Query timeout (configurable, default 5s)
-  - Row limit (configurable, default 1000)
+#### 2. Chatbot Service & LLM Providers
+**Files: `orchestrator/chatbot_service.py` and `orchestrator/llm_providers.py`**
+
+**ChatbotService:**
+- `ChatbotService` class with provider abstraction
+- Delegates to appropriate LLM provider based on configuration
+- Provider-agnostic tool execution and management
+
+**Multi-Provider Support:**
+- `LLMProvider` abstract base class for all providers
+- `AnthropicProvider`: Claude API via Anthropic SDK
+- `GoogleProvider`: Gemini API via google-generativeai SDK
+- `OpenAIProvider`: GPT models via OpenAI SDK
+- Factory pattern (`get_provider()`) for dynamic provider selection
+
+**5 Built-in Database Tools:**
+- `query_database`: Execute safe SELECT queries with guardrails
+- `get_metrics`: Current connections, disk, cache hit ratio
+- `get_slow_queries`: Performance insights from pg_stat_statements
+- `get_table_stats`: Table sizes and row counts
+- `check_locks`: Blocking sessions and lock contention
+
+**Guardrails enforced on all providers:**
+- SELECT-only queries (no INSERT/UPDATE/DELETE)
+- No DDL (CREATE/ALTER/DROP)
+- Query timeout (configurable, default 5s)
+- Row limit (configurable, default 1000)
 
 #### 3. API Endpoints
 **File: `api/server.py`**
@@ -124,6 +137,94 @@ Tests performed:
 
 Result: ✅ All endpoints working, awaiting API key for full test
 
+### LLM Provider Configuration
+
+#### Supported Providers
+
+**Anthropic Claude** (Default)
+- Supported models: `claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku`
+- Environment variable: `ANTHROPIC_API_KEY`
+- Get API key: https://console.anthropic.com/account/keys
+
+**Google Gemini**
+- Supported models: `gemini-pro`, `gemini-1.5-pro`
+- Environment variable: `GOOGLE_API_KEY`
+- Get API key: https://makersuite.google.com/app/apikey
+
+**OpenAI GPT**
+- Supported models: `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo`
+- Environment variable: `OPENAI_API_KEY`
+- Get API key: https://platform.openai.com/api-keys
+
+#### Switching Providers
+
+**Method 1: Via AdminPage UI (Recommended)**
+1. Navigate to https://sqlagent.dittmar.it/admin (after deployment to arm2)
+2. Change "LLM Provider" dropdown
+3. Change "Model Name" field
+4. Click "Save Configuration"
+
+**Method 2: Via API**
+```bash
+curl -X POST http://localhost:8084/api/chatbot/config \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "llm_provider": "google",
+    "llm_model": "gemini-1.5-pro"
+  }'
+```
+
+**Method 3: Direct Database Update**
+```sql
+UPDATE chatbot_config SET 
+  llm_provider = 'google',
+  llm_model = 'gemini-1.5-pro'
+WHERE id = 1;
+```
+
+#### Setting Up Each Provider
+
+**Anthropic**
+```bash
+# Install SDK
+pip install anthropic
+
+# Set API key
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Test
+python3 scripts/test_chatbot.py
+```
+
+**Google Gemini**
+```bash
+# Install SDK
+pip install google-generativeai
+
+# Set API key
+export GOOGLE_API_KEY="AIzaSy..."
+
+# Update config
+curl -X POST http://localhost:8084/api/chatbot/config \
+  -H "Authorization: Bearer <token>" \
+  -d '{"llm_provider": "google", "llm_model": "gemini-1.5-pro"}'
+```
+
+**OpenAI GPT**
+```bash
+# Install SDK
+pip install openai
+
+# Set API key
+export OPENAI_API_KEY="sk-..."
+
+# Update config
+curl -X POST http://localhost:8084/api/chatbot/config \
+  -H "Authorization: Bearer <token>" \
+  -d '{"llm_provider": "openai", "llm_model": "gpt-4-turbo"}'
+```
+
 ### Deployment Checklist
 
 #### Backend (arm1)
@@ -131,18 +232,36 @@ Result: ✅ All endpoints working, awaiting API key for full test
 **Already Done:**
 - ✅ Database tables created via `init-db`
 - ✅ API endpoints implemented and tested
-- ✅ Chatbot service working
+- ✅ Chatbot service working with multi-provider support
 - ✅ JWT authentication required on all endpoints
+- ✅ All LLM provider SDKs in requirements.txt
 
 **Still Needed:**
-- ⚠️ Set `ANTHROPIC_API_KEY` environment variable:
+- ⚠️ Install desired LLM provider SDK:
   ```bash
+  # For Anthropic (default)
+  pip install anthropic
+  
+  # For Google Gemini
+  pip install google-generativeai
+  
+  # For OpenAI GPT
+  pip install openai
+  ```
+
+- ⚠️ Set appropriate API key environment variable:
+  ```bash
+  # For Anthropic
   export ANTHROPIC_API_KEY="sk-ant-..."
+  
+  # For Google
+  export GOOGLE_API_KEY="AIzaSy..."
+  
+  # For OpenAI
+  export OPENAI_API_KEY="sk-..."
   ```
-  Or in `.env` file:
-  ```
-  ANTHROPIC_API_KEY=sk-ant-...
-  ```
+  
+  Or add to `.env` file and source before running API
 
 #### Frontend (arm2)
 
