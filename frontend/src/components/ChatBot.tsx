@@ -101,17 +101,17 @@ export default function ChatBot() {
         )}
 
         {messages.map((msg, idx) => (
-          <div key={idx} className="space-y-2">
+          <div key={idx} className="space-y-2 w-full">
             {/* User message */}
-            <div className="flex justify-end">
-              <div className="bg-cyan-900/40 text-cyan-100 px-4 py-2 rounded-lg max-w-xs break-words text-2xl">
+            <div className="flex justify-end w-full">
+              <div className="bg-cyan-900/40 text-cyan-100 px-4 py-2 rounded-lg max-w-2xl md:max-w-3xl lg:max-w-4xl break-words text-2xl">
                 {msg.user_message}
               </div>
             </div>
 
             {/* Assistant message */}
-            <div className="flex justify-start">
-              <div className="bg-slate-700/50 text-slate-100 px-4 py-2 rounded-lg max-w-xs break-words">
+            <div className="flex justify-start w-full">
+              <div className="bg-slate-700/50 text-slate-100 px-4 py-2 rounded-lg max-w-2xl md:max-w-3xl lg:max-w-4xl break-words">
                 <p className="text-2xl whitespace-pre-wrap">
                   {msg.assistant_message}
                 </p>
