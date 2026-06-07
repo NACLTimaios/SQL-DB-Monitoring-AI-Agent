@@ -103,9 +103,9 @@ export default function DashboardGrid({
   ] as const;
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="h-screen flex flex-col bg-slate-900">
       {/* Tab Navigation */}
-      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur sticky top-20 z-40">
+      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur z-40 flex-shrink-0">
         <div className="px-6 flex gap-8 items-center">
           {tabs.map((tab) => (
             <button
@@ -140,7 +140,7 @@ export default function DashboardGrid({
 
       {/* Tab Content - Metrics and Health */}
       {(activeTab === 'metrics' || activeTab === 'health') && (
-        <div ref={containerRef} className="p-6 max-w-full overflow-x-hidden h-[calc(100vh-180px)] flex flex-col flex-1 min-h-0">
+        <div ref={containerRef} className="p-6 max-w-full overflow-x-hidden flex flex-col flex-1 min-h-0">
           {/* Metrics Tab */}
           {activeTab === 'metrics' && (
             <div ref={metricsContainerRef} style={{ width: containerWidth, flex: 1, minHeight: 0 }}>
@@ -257,8 +257,8 @@ export default function DashboardGrid({
 
       {/* Chatbot Tab - Full Width */}
       {activeTab === 'chatbot' && (
-        <div className="w-full max-w-full h-[calc(100vh-180px)] flex flex-col overflow-hidden">
-          <div className="p-6 h-full flex flex-col min-h-0">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 flex flex-col flex-1 min-h-0">
             <ChatBot />
           </div>
         </div>
