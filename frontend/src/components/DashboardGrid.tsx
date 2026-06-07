@@ -28,16 +28,18 @@ export default function DashboardGrid({
 }: DashboardGridProps) {
   const [activeTab, setActiveTab] = useState<'metrics' | 'chatbot' | 'health'>('metrics');
   const [layout, setLayout] = useState<any[]>([
-    { x: 0, y: 0, w: 2, h: 2, i: 'capacity', static: false },
-    { x: 2, y: 0, w: 2, h: 2, i: 'locks', static: false },
-    { x: 4, y: 0, w: 2, h: 2, i: 'database', static: false },
-    { x: 0, y: 2, w: 2, h: 2, i: 'insights', static: false },
-    { x: 2, y: 2, w: 4, h: 2, i: 'activity', static: false },
-    { x: 0, y: 4, w: 6, h: 3, i: 'performance', static: false },
+    { x: 0, y: 0, w: 2, h: 1, i: 'capacity', static: false },
+    { x: 2, y: 0, w: 2, h: 1, i: 'locks', static: false },
+    { x: 4, y: 0, w: 2, h: 1, i: 'database', static: false },
+    { x: 0, y: 1, w: 2, h: 1, i: 'insights', static: false },
+    { x: 2, y: 1, w: 4, h: 1, i: 'activity', static: false },
+    { x: 0, y: 2, w: 6, h: 1, i: 'performance', static: false },
   ]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [containerWidth, setContainerWidth] = useState(1200);
+  const [rowHeight, setRowHeight] = useState(250);
   const containerRef = useRef<HTMLDivElement>(null);
+  const metricsContainerRef = useRef<HTMLDivElement>(null);
 
   // Load layout from localStorage and measure container
   useEffect(() => {
@@ -56,13 +58,30 @@ export default function DashboardGrid({
     }
   }, []);
 
-  // Handle window resize
+  // Handle window resize - update width and calculate row height
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
         setContainerWidth(containerRef.current.offsetWidth);
       }
+
+      // Calculate available height for the metrics grid
+      if (metricsContainerRef.current) {
+        const header = document.querySelector('header') as HTMLElement;
+        const tabNav = document.querySelector('[class*="sticky"][class*="top-20"]') as HTMLElement;
+        const headerHeight = header?.offsetHeight || 72;
+        const tabHeight = tabNav?.offsetHeight || 52;
+        const paddingAndMargins = 48 + 32; // p-6 (24*2) + grid margins (16*2)
+
+        const availableHeight = window.innerHeight - headerHeight - tabHeight - paddingAndMargins;
+        // Grid has 3 rows (3 x rowHeight) with 2 gaps of 16px = 32px
+        // availableHeight = 3 * rowHeight + 32
+        const calculatedRowHeight = Math.max(150, (availableHeight - 32) / 3);
+        setRowHeight(calculatedRowHeight);
+      }
     };
+
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -115,16 +134,16 @@ export default function DashboardGrid({
       </div>
 
       {/* Tab Content */}
-      <div ref={containerRef} className="p-6 max-w-full overflow-x-auto">
+      <div ref={containerRef} className="p-6 max-w-full overflow-x-hidden h-[calc(100vh-180px)] flex flex-col">
         {/* Metrics Tab */}
         {activeTab === 'metrics' && (
-          <div style={{ width: containerWidth }}>
+          <div ref={metricsContainerRef} style={{ width: containerWidth, flex: 1, minHeight: 0 }}>
             {React.createElement(GridLayout as any, {
               className: 'layout',
               layout,
               onLayoutChange: handleLayoutChange,
               cols: 6,
-              rowHeight: 100,
+              rowHeight: rowHeight,
               width: containerWidth,
               isDraggable: isEditMode,
               isResizable: isEditMode,
@@ -157,8 +176,8 @@ export default function DashboardGrid({
 
         {/* Chatbot Tab */}
         {activeTab === 'chatbot' && (
-          <div className="max-w-6xl mx-auto">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-lg" style={{ minHeight: 'calc(100vh - 250px)' }}>
+          <div className="w-full flex-1 min-h-0">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-lg h-full">
               <ChatBot />
             </div>
           </div>
@@ -166,10 +185,10 @@ export default function DashboardGrid({
 
         {/* Agent Health Tab */}
         {activeTab === 'health' && (
-          <div className="max-w-6xl mx-auto space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="w-full flex-1 min-h-0 flex flex-col gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-shrink-0">
               {/* Agent Status */}
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg overflow-hidden flex flex-col" style={{ minHeight: '400px' }}>
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg overflow-hidden flex flex-col h-96">
                 <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">Agent Status</h2>
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
@@ -177,9 +196,9 @@ export default function DashboardGrid({
               </div>
 
               {/* System Status */}
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg">
-                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">System Status</h2>
-                <div className="space-y-4">
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg flex flex-col h-96">
+                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">System Status</h2>
+                <div className="space-y-4 flex-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-400">Orchestrator</span>
                     <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
@@ -215,7 +234,7 @@ export default function DashboardGrid({
             </div>
 
             {/* Domain Execution */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg flex-shrink-0">
               <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">Domain Execution</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
@@ -242,6 +261,7 @@ export default function DashboardGrid({
         :global(.react-grid-layout) {
           background: transparent;
           width: 100%;
+          height: 100%;
         }
         :global(.react-grid-item) {
           background: transparent;
