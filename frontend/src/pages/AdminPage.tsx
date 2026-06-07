@@ -134,17 +134,9 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-brand-dark p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-100">
-            Chatbot Configuration
-          </h1>
-          <button
-            onClick={() => navigate('/')}
-            className="px-4 py-2 text-sm font-semibold text-gray-300 hover:text-gray-100 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors"
-          >
-            ← Back to Dashboard
-          </button>
-        </div>
+        <h1 className="text-3xl font-bold text-gray-100 mb-8">
+          Chatbot Configuration
+        </h1>
 
         {/* Status message */}
         {message && (
@@ -413,6 +405,12 @@ export default function AdminPage() {
             className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-lg font-semibold transition-colors"
           >
             Reload
+          </button>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-lg font-semibold transition-colors"
+          >
+            ← Back to Dashboard
           </button>
         </div>
       </div>
