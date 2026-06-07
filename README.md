@@ -31,8 +31,6 @@ A domain-focused SQL database monitoring agent with multi-provider LLM chatbot i
 **This is a lab/POC setup and NOT suitable for production without significant security hardening.**
 
 ### Known Security Issues
-- **Hardcoded credentials:** Default username/password (`agentadmin`/`Poseidon#x10`) stored in code
-- **Plain text password storage:** User passwords not properly hashed with modern algorithms
 - **API keys in environment:** LLM API keys loaded from `.env` (should use secrets vault)
 - **No rate limiting:** API endpoints lack request rate limiting
 - **Basic JWT implementation:** No token refresh mechanism or rotation
@@ -43,18 +41,18 @@ A domain-focused SQL database monitoring agent with multi-provider LLM chatbot i
 
 ### Before Production Deployment
 You MUST:
-1. ✅ Replace hardcoded credentials with a proper identity provider (LDAP, OAuth2, OpenID Connect)
+1. ⚠️ Replace hardcoded credentials with a proper identity provider (LDAP, OAuth2, OpenID Connect)
 2. ✅ Use bcrypt, Argon2, or similar for password hashing
-3. ✅ Move API keys to a secrets management system (HashiCorp Vault, AWS Secrets Manager, etc.)
-4. ✅ Implement comprehensive request rate limiting
-5. ✅ Add token refresh and rotation mechanisms
-6. ✅ Encrypt sensitive data at rest and in transit
-7. ✅ Set up comprehensive audit logging and monitoring
-8. ✅ Implement proper CORS and CSRF protection
-9. ✅ Add extensive input validation and sanitization
+3. ⚠️ Move API keys to a secrets management system (HashiCorp Vault, AWS Secrets Manager, etc.)
+4. ❌ Implement comprehensive request rate limiting
+5. ❌ Add token refresh and rotation mechanisms
+6. ❌ Encrypt sensitive data at rest and in transit
+7. ❌ Set up comprehensive audit logging and monitoring
+8. ❌ Implement proper CORS and CSRF protection
+9. ❌ Add extensive input validation and sanitization
 10. ✅ Use TLS/HTTPS for all traffic
 11. ✅ Implement role-based access control (RBAC)
-12. ✅ Regular security audits and penetration testing
+12. ❌ Regular security audits and penetration testing
 
 ### Current Status
 - ✅ Functional for laboratory/development testing
@@ -134,10 +132,10 @@ Access the dashboard at `https://sqlagent.dittmar.it`
 ### 3. Test the Chatbot
 
 ```bash
-# Get JWT token
+# Get JWT token (default admin user - MUST be changed on first login!)
 curl -X POST http://localhost:8084/api/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"agentadmin","password":"Poseidon#x10"}'
+  -d '{"username":"admin","password":"changeme"}'
 
 # Send a chat message
 curl -X POST http://localhost:8084/api/chatbot/chat \
@@ -166,6 +164,29 @@ database: {host: localhost, port: 5432, database: agent_store, user: agent}
 api: {host: 0.0.0.0, port: 8084}
 ```
 
+### User Management
+
+The system uses database-backed user authentication with role-based access control (RBAC):
+
+**Default Roles:**
+- **admin** — Full access to dashboard and admin configuration page
+- **dashboard** — View dashboard only
+
+**Default User:**
+- Username: `admin`
+- Password: `changeme`
+- **⚠️ WARNING:** Change this password immediately in production
+
+**Password Hashing:**
+- Passwords are hashed using Argon2 algorithm
+- User passwords are never stored in plain text
+
+**User Lifecycle:**
+1. Default admin user created on first server startup
+2. Default roles and permissions initialized
+3. Users can authenticate with username/password
+4. JWT tokens expire after 24 hours
+
 ### Environment Variables (.env)
 
 Choose one LLM provider:
@@ -179,6 +200,9 @@ GOOGLE_API_KEY=AIzaSy...
 
 # Option 3: OpenAI GPT
 OPENAI_API_KEY=sk-...
+
+# Optional: JWT Secret Key (auto-generated if not provided)
+SECRET_KEY=your-secret-key-here
 ```
 
 ## API Endpoints
@@ -187,8 +211,10 @@ OPENAI_API_KEY=sk-...
 - `POST /api/login` — Get JWT token
   ```bash
   curl -X POST http://localhost:8084/api/login \
-    -d '{"username":"agentadmin","password":"Poseidon#x10"}'
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"changeme"}'
   ```
+  **Note:** Default admin user is created on first startup. Change the password immediately in production.
 
 ### Health
 - `GET /api/health` — System health check (no auth)
@@ -316,8 +342,10 @@ sql_agent/
 ├── store/
 │   ├── models.py              # SQLAlchemy ORM models
 │   ├── chatbot_models.py       # Chatbot config and chat history
+│   ├── user_models.py          # User, Role, Permission, UserProfile models
 │   └── repository.py          # Data access layer
 ├── api/
+│   ├── auth.py                # Authentication and user management
 │   └── server.py              # FastAPI endpoints
 ├── frontend/
 │   ├── src/components/
@@ -388,16 +416,21 @@ Expected: 5 integration tests passing (uses in-memory SQLite)
 ✅ **Protected:**
 - API keys in `.env` (gitignored, permissions 600)
 - JWT tokens with 24-hour expiry
+- Database-backed user authentication
+- Passwords hashed with Argon2
+- Role-based access control (RBAC)
 - Database queries limited to SELECT-only by default
 - SQL injection protection through parameterized queries
 
 ⚠️ **Consider for Production:**
 - Encrypt API keys at rest
-- Use stronger authentication (LDAP, OAuth)
+- Use stronger authentication (LDAP, OAuth, OpenID Connect)
 - Enable HTTPS/TLS for all traffic
 - Implement request rate limiting
 - Add audit logging for configuration changes
 - Restrict database user to read-only access
+- Implement token refresh and rotation
+- Set up comprehensive API access logging
 
 ## Performance Notes
 

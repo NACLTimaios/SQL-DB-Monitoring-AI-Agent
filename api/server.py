@@ -113,11 +113,23 @@ class ChatbotConfigUpdate(BaseModel):
 @app.post("/api/login")
 def login(request: LoginRequest) -> Token:
     """Authenticate user and return JWT token."""
-    if not authenticate_user(request.username, request.password):
+    session_factory = _state.get("session_factory")
+    if not session_factory:
         raise HTTPException(
-            status_code=401,
-            detail="Invalid username or password",
+            status_code=500,
+            detail="Database not initialized",
         )
+
+    session = session_factory()
+    try:
+        if not authenticate_user(session, request.username, request.password):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid username or password",
+            )
+    finally:
+        session.close()
+
     access_token = create_access_token(data={"sub": request.username})
     return Token(access_token=access_token, token_type="bearer")
 
