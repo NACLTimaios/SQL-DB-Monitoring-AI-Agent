@@ -13,22 +13,29 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Login attempt with username:', username);
     setError('');
     setLoading(true);
 
     try {
+      console.log('Sending POST request to /api/login');
       const response = await axios.post('/api/login', {
         username,
         password,
       });
 
+      console.log('Login response received:', response.data);
       if (response.data.access_token) {
+        console.log('Token received, storing in localStorage');
         localStorage.setItem('token', response.data.access_token);
+        console.log('Calling onLoginSuccess');
         onLoginSuccess();
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please try again.');
+      const errorMsg = err.response?.data?.detail || err.message || 'Login failed. Please try again.';
       console.error('Login error:', err);
+      console.error('Error message:', errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

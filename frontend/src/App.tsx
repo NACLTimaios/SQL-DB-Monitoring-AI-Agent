@@ -92,6 +92,7 @@ function AppRoutes({
   isRunning,
   isDbConnected,
   status,
+  onLoginSuccess,
 }: {
   authenticated: boolean;
   healthData: HealthResponse | null;
@@ -102,6 +103,7 @@ function AppRoutes({
   isRunning: boolean;
   isDbConnected: boolean;
   status: string;
+  onLoginSuccess: () => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -109,7 +111,7 @@ function AppRoutes({
   if (!authenticated) {
     return (
       <Routes>
-        <Route path="*" element={<Login onLoginSuccess={() => navigate('/')} />} />
+        <Route path="*" element={<Login onLoginSuccess={onLoginSuccess} />} />
       </Routes>
     );
   }
@@ -143,6 +145,10 @@ export default function App() {
   const [dbSummary, setDbSummary] = useState<DatabaseSummaryResponse | null>(null);
   const [insightsPending, setInsightsPending] = useState<InsightsPendingResponse | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+
+  const handleLoginSuccess = () => {
+    setAuthenticated(true);
+  };
 
   const refreshHealth = useCallback(async () => {
     const data = await fetchHealth();
@@ -209,6 +215,7 @@ export default function App() {
         isRunning={isRunning}
         isDbConnected={isDbConnected}
         status={status}
+        onLoginSuccess={handleLoginSuccess}
       />
     </BrowserRouter>
   );
