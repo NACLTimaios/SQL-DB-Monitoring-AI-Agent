@@ -58,6 +58,11 @@ export default function DashboardGrid({
     }
   }, []);
 
+  // Scroll to top when tab changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
+
   // Handle window resize - update width and calculate row height
   useEffect(() => {
     const handleResize = () => {
