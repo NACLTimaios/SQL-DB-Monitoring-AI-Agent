@@ -73,7 +73,7 @@ export default function DashboardGrid({
       // Calculate available height for the metrics grid
       if (metricsContainerRef.current) {
         const header = document.querySelector('header') as HTMLElement;
-        const tabNav = document.querySelector('[class*="sticky"][class*="top-20"]') as HTMLElement;
+        const tabNav = document.querySelector('.tab-nav') as HTMLElement;
         const headerHeight = header?.offsetHeight || 72;
         const tabHeight = tabNav?.offsetHeight || 52;
         const paddingAndMargins = 48 + 32; // p-6 (24*2) + grid margins (16*2)
@@ -103,9 +103,9 @@ export default function DashboardGrid({
   ] as const;
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900">
+    <div className="h-full flex flex-col bg-slate-900">
       {/* Tab Navigation */}
-      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur z-40 flex-shrink-0">
+      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur z-40 flex-shrink-0 tab-nav">
         <div className="px-6 flex gap-8 items-center">
           {tabs.map((tab) => (
             <button
