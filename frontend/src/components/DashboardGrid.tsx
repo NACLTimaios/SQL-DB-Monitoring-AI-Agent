@@ -26,20 +26,19 @@ export default function DashboardGrid({
   insightsPending,
   activity,
 }: DashboardGridProps) {
+  const [activeTab, setActiveTab] = useState<'metrics' | 'chatbot' | 'health'>('metrics');
   const [layout, setLayout] = useState<any[]>([
-    { x: 0, y: 0, w: 2, h: 2, i: 'health', static: false },
-    { x: 2, y: 0, w: 2, h: 2, i: 'capacity', static: false },
-    { x: 4, y: 0, w: 2, h: 2, i: 'performance', static: false },
-    { x: 0, y: 2, w: 2, h: 2, i: 'locks', static: false },
-    { x: 2, y: 2, w: 2, h: 2, i: 'database', static: false },
-    { x: 4, y: 2, w: 2, h: 2, i: 'insights', static: false },
-    { x: 0, y: 4, w: 6, h: 3, i: 'chatbot', static: false },
-    { x: 0, y: 7, w: 6, h: 2, i: 'activity', static: false },
+    { x: 0, y: 0, w: 2, h: 2, i: 'capacity', static: false },
+    { x: 2, y: 0, w: 2, h: 2, i: 'performance', static: false },
+    { x: 4, y: 0, w: 2, h: 2, i: 'locks', static: false },
+    { x: 0, y: 2, w: 2, h: 2, i: 'database', static: false },
+    { x: 2, y: 2, w: 2, h: 2, i: 'insights', static: false },
+    { x: 4, y: 2, w: 2, h: 2, i: 'activity', static: false },
   ]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [containerWidth, setContainerWidth] = useState(window.innerWidth - 32);
 
-  // Load layout from localStorage or user profile
+  // Load layout from localStorage
   useEffect(() => {
     const savedLayout = localStorage.getItem('dashboard-layout');
     if (savedLayout) {
@@ -65,59 +64,153 @@ export default function DashboardGrid({
     localStorage.setItem('dashboard-layout', JSON.stringify(newLayout));
   };
 
+  const tabs = [
+    { id: 'metrics', label: '📊 Metrics', icon: '📊' },
+    { id: 'chatbot', label: '💬 Assistant', icon: '💬' },
+    { id: 'health', label: '❤️ Agent Health', icon: '❤️' },
+  ] as const;
+
   return (
-    <div className="min-h-screen bg-slate-900 p-4">
-      <div className="mb-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Dashboard</h1>
-        <button
-          onClick={() => setIsEditMode(!isEditMode)}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            isEditMode
-              ? 'bg-green-600 hover:bg-green-500 text-white'
-              : 'bg-slate-700 hover:bg-slate-600 text-slate-100'
-          }`}
-        >
-          {isEditMode ? '✓ Done Editing' : '✏️ Customize Layout'}
-        </button>
+    <div className="min-h-screen bg-slate-900">
+      {/* Tab Navigation */}
+      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur sticky top-20 z-40">
+        <div className="px-4 flex gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-6 py-4 font-medium transition-all border-b-2 ${
+                activeTab === tab.id
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <div className="flex-1" />
+          {activeTab === 'metrics' && (
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`px-4 py-4 text-sm font-semibold transition-colors ${
+                isEditMode
+                  ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              {isEditMode ? '✓ Done' : '✏️ Edit'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {React.createElement(GridLayout as any, {
-        className: 'layout',
-        layout,
-        onLayoutChange: handleLayoutChange,
-        cols: 6,
-        rowHeight: 100,
-        width: containerWidth,
-        isDraggable: isEditMode,
-        isResizable: isEditMode,
-        containerPadding: [0, 0],
-        margin: [16, 16],
-      } as any,
-        <div key="health" className="grid-item">
-          <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
-        </div>,
-        <div key="capacity" className="grid-item">
-          <CapacityPanel insights={insightsPending?.capacity} />
-        </div>,
-        <div key="performance" className="grid-item">
-          <PerformancePanel insights={insightsPending?.performance} />
-        </div>,
-        <div key="locks" className="grid-item">
-          <LocksPanel insights={insightsPending?.locks} />
-        </div>,
-        <div key="database" className="grid-item">
-          <DatabaseSummaryPanel summary={dbSummary} />
-        </div>,
-        <div key="insights" className="grid-item">
-          <InsightsAlerts insights={insightsPending} />
-        </div>,
-        <div key="chatbot" className="grid-item">
-          <ChatBot />
-        </div>,
-        <div key="activity" className="grid-item">
-          <ActivityFeed activity={activity} />
-        </div>
-      )}
+      {/* Tab Content */}
+      <div className="p-4">
+        {/* Metrics Tab */}
+        {activeTab === 'metrics' && (
+          <div>
+            {React.createElement(GridLayout as any, {
+              className: 'layout',
+              layout,
+              onLayoutChange: handleLayoutChange,
+              cols: 6,
+              rowHeight: 100,
+              width: containerWidth,
+              isDraggable: isEditMode,
+              isResizable: isEditMode,
+              containerPadding: [0, 0],
+              margin: [16, 16],
+            } as any,
+              <div key="capacity" className="grid-item">
+                <CapacityPanel insights={insightsPending?.capacity} />
+              </div>,
+              <div key="performance" className="grid-item">
+                <PerformancePanel insights={insightsPending?.performance} />
+              </div>,
+              <div key="locks" className="grid-item">
+                <LocksPanel insights={insightsPending?.locks} />
+              </div>,
+              <div key="database" className="grid-item">
+                <DatabaseSummaryPanel summary={dbSummary} />
+              </div>,
+              <div key="insights" className="grid-item">
+                <InsightsAlerts insights={insightsPending} />
+              </div>,
+              <div key="activity" className="grid-item">
+                <ActivityFeed activity={activity} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Chatbot Tab */}
+        {activeTab === 'chatbot' && (
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-lg" style={{ minHeight: 'calc(100vh - 250px)' }}>
+              <ChatBot />
+            </div>
+          </div>
+        )}
+
+        {/* Agent Health Tab */}
+        {activeTab === 'health' && (
+          <div className="max-w-6xl mx-auto space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 shadow-lg">
+                <h2 className="text-lg font-semibold text-slate-200 mb-4">Agent Status</h2>
+                <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 shadow-lg">
+                  <h2 className="text-lg font-semibold text-slate-200 mb-4">System Status</h2>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Orchestrator</span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        healthData?.orchestrator_running
+                          ? 'bg-green-900/30 text-green-400'
+                          : 'bg-red-900/30 text-red-400'
+                      }`}>
+                        {healthData?.orchestrator_running ? '✓ Running' : '✗ Stopped'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Database Connection</span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        healthData?.db_connected
+                          ? 'bg-green-900/30 text-green-400'
+                          : 'bg-red-900/30 text-red-400'
+                      }`}>
+                        {healthData?.db_connected ? '✓ Connected' : '✗ Disconnected'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Overall Status</span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        healthData?.status === 'ok' || healthData?.status === 'healthy'
+                          ? 'bg-green-900/30 text-green-400'
+                          : 'bg-yellow-900/30 text-yellow-400'
+                      }`}>
+                        {healthData?.status?.toUpperCase() || 'UNKNOWN'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 shadow-lg">
+                  <h2 className="text-lg font-semibold text-slate-200 mb-4">Domain Execution</h2>
+                  <div className="space-y-2 text-sm text-slate-400">
+                    <p>Last cycle: <span className="text-slate-200 font-mono text-xs">{agentStatus?.last_cycle ? new Date(agentStatus.last_cycle).toLocaleTimeString() : 'Unknown'}</span></p>
+                    <p>Domains: <span className="text-slate-200">{agentStatus?.domains_executed?.join(', ') || 'None'}</span></p>
+                    <p>Pending actions: <span className="text-slate-200 font-semibold">{agentStatus?.queue_size || 0}</span></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <style>{`
         :global(.react-grid-layout) {
@@ -142,24 +235,6 @@ export default function DashboardGrid({
         :global(.react-grid-item > .resizing) {
           opacity: 0.9;
           z-index: 3;
-        }
-        :global(.react-grid-item.static) {
-          background: #cce;
-        }
-        :global(.react-grid-item.text) {
-          padding: 0;
-          font-size: 24px;
-          line-height: 1;
-        }
-        :global(.react-grid-item.no-drag) {
-          height: 80px;
-          line-height: 80px;
-        }
-        :global(.react-grid-item.minMax) {
-          font-size: 12px;
-        }
-        :global(.react-grid-item.add) {
-          cursor: pointer;
         }
         :global(.dragging) {
           opacity: 0.3;
