@@ -149,10 +149,11 @@ export default function AdminPage() {
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-cyan-500"
               >
                 <option value="anthropic">Anthropic (Claude)</option>
-                <option value="openai">OpenAI (Coming soon)</option>
+                <option value="google">Google (Gemini)</option>
+                <option value="openai">OpenAI (GPT-4/o)</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                Select the LLM provider. Currently only Anthropic is supported.
+                Select the LLM provider. All three providers are supported.
               </p>
             </div>
 
