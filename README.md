@@ -1,6 +1,8 @@
 # SQL Agent — AI-Powered Database Monitoring
 
-A production-ready domain-focused SQL database monitoring agent with multi-provider LLM chatbot integration. Continuously monitors PostgreSQL databases, analyzes metrics across three independent domains (capacity, performance, locks), and provides an interactive chat interface powered by Anthropic Claude, Google Gemini, or OpenAI GPT.
+A domain-focused SQL database monitoring agent with multi-provider LLM chatbot integration. Continuously monitors PostgreSQL databases, analyzes metrics across three independent domains (capacity, performance, locks), and provides an interactive chat interface powered by Anthropic Claude, Google Gemini, or OpenAI GPT.
+
+**⚠️ Lab/POC Setup:** This is a laboratory proof-of-concept implementation. See [Security Notice](#-lab-setup--security-notice) below before considering for production use.
 
 ## Features
 
@@ -23,6 +25,45 @@ A production-ready domain-focused SQL database monitoring agent with multi-provi
 - **JWT authentication** with 24-hour token expiry
 - **Live status monitoring** and insights display
 - **Activity feed** and timeline visualization
+
+## ⚠️ Lab Setup / Security Notice
+
+**This is a lab/POC setup and NOT suitable for production without significant security hardening.**
+
+### Known Security Issues
+- **Hardcoded credentials:** Default username/password (`agentadmin`/`Poseidon#x10`) stored in code
+- **Plain text password storage:** User passwords not properly hashed with modern algorithms
+- **API keys in environment:** LLM API keys loaded from `.env` (should use secrets vault)
+- **No rate limiting:** API endpoints lack request rate limiting
+- **Basic JWT implementation:** No token refresh mechanism or rotation
+- **No audit logging:** Configuration changes and API calls not logged
+- **Database credentials:** Monitored database credentials in config.yaml
+- **CORS not configured:** Cross-origin requests may not be properly restricted
+- **No input validation:** Limited validation on user-supplied data
+
+### Before Production Deployment
+You MUST:
+1. ✅ Replace hardcoded credentials with a proper identity provider (LDAP, OAuth2, OpenID Connect)
+2. ✅ Use bcrypt, Argon2, or similar for password hashing
+3. ✅ Move API keys to a secrets management system (HashiCorp Vault, AWS Secrets Manager, etc.)
+4. ✅ Implement comprehensive request rate limiting
+5. ✅ Add token refresh and rotation mechanisms
+6. ✅ Encrypt sensitive data at rest and in transit
+7. ✅ Set up comprehensive audit logging and monitoring
+8. ✅ Implement proper CORS and CSRF protection
+9. ✅ Add extensive input validation and sanitization
+10. ✅ Use TLS/HTTPS for all traffic
+11. ✅ Implement role-based access control (RBAC)
+12. ✅ Regular security audits and penetration testing
+
+### Current Status
+- ✅ Functional for laboratory/development testing
+- ✅ Multi-provider LLM integration working
+- ✅ Chatbot with database tool execution
+- ❌ NOT suitable for production environments
+- ❌ NOT suitable for sensitive data or regulated systems
+
+This codebase serves as a proof-of-concept and architectural reference. Production deployments require substantial security enhancements.
 
 ## Architecture
 
