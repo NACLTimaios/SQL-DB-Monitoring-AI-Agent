@@ -86,7 +86,7 @@ class AnthropicProvider(LLMProvider):
     """Claude API provider using Anthropic SDK."""
 
     def chat(self, user_message: str, available_tools: dict) -> ProviderResponse:
-        """Send message to Claude via Anthropic API."""
+        """Send message to Claude via Anthropic API with proper tool use loop."""
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             return ProviderResponse(
@@ -99,35 +99,80 @@ class AnthropicProvider(LLMProvider):
             from anthropic import Anthropic
 
             client = Anthropic(api_key=api_key)
-
-            # Build Claude tools schema
             tools_schema = self._build_claude_tools(available_tools)
 
-            # Call Claude with tools
-            response = client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=self.system_prompt,
-                tools=tools_schema,
-                messages=[{"role": "user", "content": user_message}],
-            )
-
-            # Process response blocks
-            assistant_message = ""
+            # Initialize message list
+            messages = [{"role": "user", "content": user_message}]
             tools_used = []
 
-            for block in response.content:
-                if hasattr(block, "text"):
-                    assistant_message += block.text
-                elif block.type == "tool_use":
-                    tools_used.append(block.name)
-                    tool_result = self._execute_tool(block.name, block.input)
-                    assistant_message += f"\n[Executed {block.name}]\n{tool_result}\n"
+            # Agentic loop - keep calling until model stops using tools
+            max_iterations = 10
+            iteration = 0
 
+            while iteration < max_iterations:
+                iteration += 1
+
+                # Call Claude
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=self.system_prompt,
+                    tools=tools_schema if tools_schema else None,
+                    messages=messages,
+                )
+
+                # Check if we should continue the loop
+                if response.stop_reason == "end_turn":
+                    # Model finished, extract final text response
+                    final_message = ""
+                    for block in response.content:
+                        if hasattr(block, "text"):
+                            final_message += block.text
+
+                    return ProviderResponse(
+                        assistant_message=final_message.strip(),
+                        tools_used=tools_used,
+                        stop_reason=response.stop_reason,
+                    )
+
+                # Process tool calls
+                if response.stop_reason == "tool_use":
+                    # Add assistant response to messages
+                    messages.append({"role": "assistant", "content": response.content})
+
+                    # Execute tools and collect results
+                    tool_results = []
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            tools_used.append(block.name)
+                            tool_result = self._execute_tool(block.name, block.input)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": tool_result,
+                            })
+
+                    # Add tool results as user message
+                    if tool_results:
+                        messages.append({"role": "user", "content": tool_results})
+                else:
+                    # Unexpected stop reason
+                    final_message = ""
+                    for block in response.content:
+                        if hasattr(block, "text"):
+                            final_message += block.text
+
+                    return ProviderResponse(
+                        assistant_message=final_message.strip(),
+                        tools_used=tools_used,
+                        stop_reason=response.stop_reason,
+                    )
+
+            # Max iterations reached
             return ProviderResponse(
-                assistant_message=assistant_message,
+                assistant_message="",
                 tools_used=tools_used,
-                stop_reason=response.stop_reason,
+                error="Max tool use iterations reached",
             )
 
         except ImportError:
