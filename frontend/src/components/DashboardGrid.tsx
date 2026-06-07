@@ -37,6 +37,7 @@ export default function DashboardGrid({
     { x: 0, y: 7, w: 6, h: 2, i: 'activity', static: false },
   ]);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(window.innerWidth - 32);
 
   // Load layout from localStorage or user profile
   useEffect(() => {
@@ -48,6 +49,15 @@ export default function DashboardGrid({
         console.error('Failed to load saved layout:', e);
       }
     }
+  }, []);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setContainerWidth(window.innerWidth - 32);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleLayoutChange = (newLayout: any[]) => {
@@ -77,9 +87,11 @@ export default function DashboardGrid({
         onLayoutChange: handleLayoutChange,
         cols: 6,
         rowHeight: 100,
-        width: 1200,
+        width: containerWidth,
         isDraggable: isEditMode,
         isResizable: isEditMode,
+        containerPadding: [0, 0],
+        margin: [16, 16],
       } as any,
         <div key="health" className="grid-item">
           <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
@@ -110,10 +122,17 @@ export default function DashboardGrid({
       <style>{`
         :global(.react-grid-layout) {
           background: transparent;
+          width: 100%;
         }
         :global(.react-grid-item) {
           background: transparent;
           border: none;
+          overflow: hidden;
+        }
+        :global(.react-grid-item > div) {
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
         }
         :global(.react-grid-item.react-grid-placeholder) {
           background: rgba(34, 197, 94, 0.2);
