@@ -37,14 +37,14 @@ function DashboardContent({
   status: string;
 }) {
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="h-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
       <Header
         status={status}
         lastCycle={agentStatus?.last_cycle ?? ''}
         isRunning={isRunning}
       />
 
-      <main className="p-4">
+      <main className="flex-1 min-h-0 overflow-hidden">
         <DashboardGrid
           healthData={healthData}
           agentStatus={agentStatus}
