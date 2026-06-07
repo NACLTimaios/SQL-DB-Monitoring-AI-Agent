@@ -25,7 +25,7 @@ export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
     : 'bg-red-900/50 text-red-300 border border-red-700';
 
   return (
-    <header className="bg-[#0d1120] border-b-2 border-blue-600 px-6 py-4">
+    <header className="sticky top-0 z-50 bg-[#0d1120] border-b-2 border-blue-600 px-6 py-4">
       <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight">SQL Agent</h1>
