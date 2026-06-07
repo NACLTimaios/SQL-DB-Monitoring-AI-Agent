@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from api.auth import LoginRequest, Token, authenticate_user, create_access_token, verify_token
+from api.auth import LoginRequest, Token, ChangePasswordRequest, authenticate_user, create_access_token, verify_token, change_user_password, get_current_user, verify_token_payload
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,24 @@ def login(request: LoginRequest) -> Token:
 
     access_token = create_access_token(data={"sub": request.username})
     return Token(access_token=access_token, token_type="bearer")
+
+
+@app.post("/api/change-password")
+def change_password(request: ChangePasswordRequest, username: str = Depends(verify_token)):
+    """Change user's password."""
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(
+            status_code=500,
+            detail="Database not initialized",
+        )
+
+    session = session_factory()
+    try:
+        change_user_password(session, username, request.current_password, request.new_password)
+        return {"message": "Password changed successfully"}
+    finally:
+        session.close()
 
 
 @app.get("/api/health")

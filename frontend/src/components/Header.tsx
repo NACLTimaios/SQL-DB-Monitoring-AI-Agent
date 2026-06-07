@@ -1,7 +1,8 @@
-
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateTime } from '../utils/format';
 import { logout } from '../utils/api';
+import PasswordChangeModal from './PasswordChangeModal';
 
 interface HeaderProps {
   status: string;
@@ -11,6 +12,7 @@ interface HeaderProps {
 
 export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
   const navigate = useNavigate();
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const dotColor =
     status === 'ok' || status === 'healthy'
       ? 'bg-green-500'
@@ -51,6 +53,12 @@ export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
             ⚙️ Admin
           </button>
           <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="px-3 py-1.5 text-xs font-semibold text-amber-300 hover:text-amber-200 border border-amber-600 hover:border-amber-500 rounded-lg transition-colors"
+          >
+            🔐 Password
+          </button>
+          <button
             onClick={logout}
             className="px-3 py-1.5 text-xs font-semibold text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors"
           >
@@ -58,6 +66,11 @@ export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
           </button>
         </div>
       </div>
+
+      <PasswordChangeModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+      />
     </header>
   );
 }
