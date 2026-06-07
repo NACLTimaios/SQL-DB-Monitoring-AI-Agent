@@ -13,96 +13,94 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Login attempt with username:', username);
     setError('');
     setLoading(true);
 
     try {
-      console.log('Sending POST request to /api/login');
       const response = await axios.post('/api/login', {
         username,
         password,
       });
 
-      console.log('Login response received:', response.data);
       if (response.data.access_token) {
-        console.log('Token received, storing in localStorage');
         localStorage.setItem('token', response.data.access_token);
-        console.log('Calling onLoginSuccess');
         onLoginSuccess();
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.detail || err.message || 'Login failed. Please try again.';
-      console.error('Login error:', err);
-      console.error('Error message:', errorMsg);
-      setError(errorMsg);
+      // Generic error message - don't reveal if username or password is wrong
+      setError('Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl shadow-2xl p-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">SQL Agent</h1>
-            <p className="text-slate-400">AI-Powered Database Monitoring</p>
+        {/* Brand Header */}
+        <div className="text-center mb-12">
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/50">
+              <span className="text-white font-bold text-xl">S</span>
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
+                SELECTer
+              </h1>
+              <p className="text-slate-400 text-xs tracking-widest uppercase">SQL Monitoring</p>
+            </div>
           </div>
+        </div>
 
+        {/* Login Card */}
+        <div className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 rounded-2xl shadow-2xl p-8 space-y-6">
           {error && (
-            <div className="mb-4 p-3 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-sm">
+            <div className="bg-red-900/25 border border-red-500/40 text-red-300 px-4 py-3 rounded-lg text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Username
-              </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                placeholder="admin"
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                placeholder="Username"
                 disabled={loading}
+                autoComplete="username"
+                required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Password
-              </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                placeholder="••••••••"
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                placeholder="Password"
                 disabled={loading}
+                autoComplete="current-password"
+                required
               />
             </div>
 
             <button
               type="submit"
               disabled={loading || !username || !password}
-              className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-cyan-500/25"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? 'Authenticating...' : 'Sign In'}
             </button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-slate-700/50">
-            <p className="text-slate-400 text-xs text-center">
-              Default credentials: admin / changeme
-            </p>
-            <p className="text-slate-500 text-xs text-center mt-2">
-              ⚠️ Change default password in production
-            </p>
-          </div>
         </div>
+
+        {/* Footer */}
+        <p className="text-slate-500 text-xs text-center mt-8">
+          © 2026 SELECTer. All rights reserved.
+        </p>
       </div>
     </div>
   );

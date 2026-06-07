@@ -27,9 +27,16 @@ export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-[#0d1120] border-b-2 border-blue-600 px-6 py-4">
       <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">SQL Agent</h1>
-          <p className="text-sm text-gray-400">Health &amp; Insights Dashboard</p>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-sm">S</span>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
+              SELECTer
+            </h1>
+            <p className="text-xs text-gray-400">SQL Monitoring Agent</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
