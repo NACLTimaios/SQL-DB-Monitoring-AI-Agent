@@ -27,26 +27,17 @@ export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-[#0d1120] border-b-2 border-blue-600 px-8 py-3">
       <div className="max-w-full flex items-center justify-between gap-8">
-        {/* Left: Buttons */}
+        {/* Left: Logo */}
         <div className="flex items-center gap-3 flex-shrink-0">
-          <button
-            onClick={() => navigate('/admin')}
-            className="px-3 py-2 text-xs font-semibold text-blue-300 hover:text-blue-200 border border-blue-600 hover:border-blue-500 rounded-lg transition-colors hover:bg-blue-600/10"
-          >
-            Admin
-          </button>
-          <button
-            onClick={() => setIsPasswordModalOpen(true)}
-            className="px-3 py-2 text-xs font-semibold text-amber-300 hover:text-amber-200 border border-amber-600 hover:border-amber-500 rounded-lg transition-colors hover:bg-amber-600/10"
-          >
-            Password
-          </button>
-          <button
-            onClick={logout}
-            className="px-3 py-2 text-xs font-semibold text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors hover:bg-gray-700/20"
-          >
-            Logout
-          </button>
+          <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/20">
+            <span className="text-white font-bold text-lg">S</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
+              SELECTer
+            </h1>
+            <p className="text-xs text-gray-400">SQL Monitoring</p>
+          </div>
         </div>
 
         {/* Center: Status and Last Cycle */}
@@ -66,17 +57,26 @@ export default function Header({ status, lastCycle, isRunning }: HeaderProps) {
           </div>
         </div>
 
-        {/* Right: Logo */}
+        {/* Right: Buttons */}
         <div className="flex items-center gap-3 flex-shrink-0">
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
-              SELECTer
-            </h1>
-            <p className="text-xs text-gray-400">SQL Monitoring</p>
-          </div>
-          <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/20">
-            <span className="text-white font-bold text-lg">S</span>
-          </div>
+          <button
+            onClick={() => navigate('/admin')}
+            className="px-3 py-2 text-xs font-semibold text-blue-300 hover:text-blue-200 border border-blue-600 hover:border-blue-500 rounded-lg transition-colors hover:bg-blue-600/10"
+          >
+            Admin
+          </button>
+          <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="px-3 py-2 text-xs font-semibold text-amber-300 hover:text-amber-200 border border-amber-600 hover:border-amber-500 rounded-lg transition-colors hover:bg-amber-600/10"
+          >
+            Password
+          </button>
+          <button
+            onClick={logout}
+            className="px-3 py-2 text-xs font-semibold text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors hover:bg-gray-700/20"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
