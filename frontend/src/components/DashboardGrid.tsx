@@ -68,7 +68,7 @@ export default function DashboardGrid({
   return (
     <div className="min-h-screen bg-slate-900 p-4">
       <div className="mb-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Dashboard</h1>
         <button
           onClick={() => setIsEditMode(!isEditMode)}
           className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
