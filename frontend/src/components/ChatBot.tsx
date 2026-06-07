@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 interface Message {
@@ -87,7 +87,12 @@ export default function ChatBot() {
   };
 
   return (
-    <div className="flex flex-col h-96 bg-brand-surface border border-brand-border rounded-xl">
+    <div className="flex flex-col h-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl overflow-hidden">
+      <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 border-b border-slate-700 px-4 py-3">
+        <h3 className="text-lg font-semibold text-white">💬 Database Assistant</h3>
+        <p className="text-xs text-slate-400 mt-1">Ask questions about your database • Powered by AI</p>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && !error && (
           <div className="text-center text-gray-500 py-8">
@@ -106,12 +111,12 @@ export default function ChatBot() {
 
             {/* Assistant message */}
             <div className="flex justify-start">
-              <div className="bg-gray-800/50 text-gray-100 px-4 py-2 rounded-lg max-w-xs break-words">
+              <div className="bg-slate-700/50 text-slate-100 px-4 py-2 rounded-lg max-w-xs break-words">
                 <p className="text-sm whitespace-pre-wrap">
                   {msg.assistant_message}
                 </p>
                 {msg.tools_used.length > 0 && (
-                  <div className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-700">
+                  <div className="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-600">
                     🔧 Tools: {msg.tools_used.join(', ')}
                   </div>
                 )}
@@ -130,7 +135,7 @@ export default function ChatBot() {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-gray-700 p-4">
+      <div className="border-t border-slate-700 p-4 bg-slate-900/50">
         <div className="flex gap-2">
           <input
             type="text"
@@ -139,7 +144,7 @@ export default function ChatBot() {
             onKeyPress={handleKeyPress}
             disabled={loading}
             placeholder="Ask about your database..."
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 placeholder-gray-600 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+            className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
           />
           <button
             onClick={handleSendMessage}

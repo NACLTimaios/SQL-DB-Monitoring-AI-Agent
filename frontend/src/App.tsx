@@ -1,18 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import AdminPage from './pages/AdminPage';
-import ChatBot from './components/ChatBot';
+import { useState, useEffect, useCallback } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import AdminPageTabbed from './pages/AdminPageTabbed';
+import DashboardGrid from './components/DashboardGrid';
 import Login from './components/Login';
 import Header from './components/Header';
-import AgentHealthPanel from './components/AgentHealthPanel';
-import CapacityPanel from './components/CapacityPanel';
-import PerformancePanel from './components/PerformancePanel';
-import LocksPanel from './components/LocksPanel';
-import DatabaseSummaryPanel from './components/DatabaseSummaryPanel';
-import InsightsAlerts from './components/InsightsAlerts';
-import ActivityFeed from './components/ActivityFeed';
-import IncidentsTimeline from './components/IncidentsTimeline';
-import HITLApprovalQueue from './components/HITLApprovalQueue';
 import {
   fetchHealth,
   fetchAgentStatus,
@@ -35,7 +26,6 @@ function DashboardContent({
   insightsPending,
   activity,
   isRunning,
-  isDbConnected,
   status,
 }: {
   healthData: HealthResponse | null;
@@ -44,40 +34,25 @@ function DashboardContent({
   insightsPending: InsightsPendingResponse | null;
   activity: ActivityEvent[];
   isRunning: boolean;
-  isDbConnected: boolean;
   status: string;
 }) {
   return (
-    <div className="min-h-screen bg-[#0a0e1a] text-gray-100 pb-12">
+    <div className="min-h-screen bg-slate-900 text-slate-100">
       <Header
         status={status}
         lastCycle={agentStatus?.last_cycle ?? ''}
         isRunning={isRunning}
       />
 
-      <main className="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <AgentHealthPanel
-            agentStatus={agentStatus}
-            isDbConnected={isDbConnected}
-            isOrchestratorRunning={isRunning}
-          />
-          <CapacityPanel insights={insightsPending?.capacity ?? null} />
-          <PerformancePanel insights={insightsPending?.performance ?? null} />
-          <LocksPanel insights={insightsPending?.locks ?? null} />
-          <DatabaseSummaryPanel summary={dbSummary} />
-          <ChatBot />
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <InsightsAlerts insights={insightsPending} />
-          <ActivityFeed activity={activity} />
-        </div>
-
-        <IncidentsTimeline />
+      <main className="p-4">
+        <DashboardGrid
+          healthData={healthData}
+          agentStatus={agentStatus}
+          dbSummary={dbSummary}
+          insightsPending={insightsPending}
+          activity={activity}
+        />
       </main>
-
-      <HITLApprovalQueue />
     </div>
   );
 }
@@ -90,7 +65,6 @@ function AppRoutes({
   insightsPending,
   activity,
   isRunning,
-  isDbConnected,
   status,
   onLoginSuccess,
 }: {
@@ -101,12 +75,9 @@ function AppRoutes({
   insightsPending: InsightsPendingResponse | null;
   activity: ActivityEvent[];
   isRunning: boolean;
-  isDbConnected: boolean;
   status: string;
   onLoginSuccess: () => void;
 }) {
-  const navigate = useNavigate();
-  const location = useLocation();
 
   if (!authenticated) {
     return (
@@ -128,12 +99,11 @@ function AppRoutes({
             insightsPending={insightsPending}
             activity={activity}
             isRunning={isRunning}
-            isDbConnected={isDbConnected}
             status={status}
           />
         }
       />
-      <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin" element={<AdminPageTabbed />} />
     </Routes>
   );
 }
@@ -200,7 +170,6 @@ export default function App() {
   }, [authenticated, refreshHealth, refreshAgentStatus, refreshInsights, refreshActivity, refreshDbSummary]);
 
   const isRunning = healthData?.orchestrator_running ?? false;
-  const isDbConnected = healthData?.db_connected ?? false;
   const status = healthData?.status ?? 'unknown';
 
   return (
@@ -213,7 +182,6 @@ export default function App() {
         insightsPending={insightsPending}
         activity={activity}
         isRunning={isRunning}
-        isDbConnected={isDbConnected}
         status={status}
         onLoginSuccess={handleLoginSuccess}
       />
