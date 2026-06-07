@@ -26,6 +26,7 @@ interface AvailableTools {
 export default function AdminPage() {
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
   const [availableTools, setAvailableTools] = useState<AvailableTools>({});
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
@@ -36,6 +37,12 @@ export default function AdminPage() {
   useEffect(() => {
     loadConfig();
   }, []);
+
+  useEffect(() => {
+    if (config) {
+      loadModelsForProvider(config.llm_provider);
+    }
+  }, [config?.llm_provider]);
 
   const loadConfig = async () => {
     try {
@@ -58,6 +65,19 @@ export default function AdminPage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadModelsForProvider = async (provider: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`/api/chatbot/models?provider=${provider}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAvailableModels(response.data.models);
+    } catch (err: any) {
+      console.error('Failed to load models:', err);
+      setAvailableModels([]);
     }
   };
 
@@ -162,16 +182,36 @@ export default function AdminPage() {
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Model Name
               </label>
-              <input
-                type="text"
-                value={config.llm_model}
-                onChange={(e) =>
-                  setConfig({ ...config, llm_model: e.target.value })
-                }
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-cyan-500"
-              />
+              {availableModels.length > 0 ? (
+                <select
+                  value={config.llm_model}
+                  onChange={(e) =>
+                    setConfig({ ...config, llm_model: e.target.value })
+                  }
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="">Select a model...</option>
+                  {availableModels.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={config.llm_model}
+                  onChange={(e) =>
+                    setConfig({ ...config, llm_model: e.target.value })
+                  }
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-cyan-500"
+                  placeholder="Enter model name"
+                />
+              )}
               <p className="text-xs text-gray-500 mt-1">
-                Example: claude-3-5-sonnet-20241022
+                {availableModels.length > 0
+                  ? 'Select from available models for this provider'
+                  : 'Enter custom model name or select a different provider'}
               </p>
             </div>
 

@@ -529,6 +529,35 @@ def get_available_tools(_: str = Depends(verify_token)):
     return AVAILABLE_TOOLS
 
 
+@app.get("/api/chatbot/models")
+def get_available_models(provider: str = "anthropic", _: str = Depends(verify_token)):
+    """Get list of available models for the specified LLM provider."""
+    models_by_provider = {
+        "anthropic": [
+            "claude-3-5-sonnet-20241022",
+            "claude-3-opus-20250219",
+            "claude-3-haiku-20240307",
+        ],
+        "google": [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-pro",
+        ],
+        "openai": [
+            "gpt-4-turbo",
+            "gpt-4o",
+            "gpt-4o-mini",
+        ],
+    }
+
+    return {
+        "provider": provider,
+        "models": models_by_provider.get(provider.lower(), []),
+    }
+
+
 @app.get("/api/chatbot/guardrails")
 def get_chatbot_guardrails(_: str = Depends(verify_token)):
     """Get current safety guardrails."""
