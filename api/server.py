@@ -105,6 +105,26 @@ class ChatbotConfigUpdate(BaseModel):
     enabled: bool | None = None
 
 
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "dashboard"  # default role
+
+
+class UpdateUserRequest(BaseModel):
+    password: str | None = None
+    role: str | None = None
+    enabled: bool | None = None
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    enabled: bool
+    roles: list[str]
+    created_at: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -148,6 +168,237 @@ def change_password(request: ChangePasswordRequest, username: str = Depends(veri
     try:
         change_user_password(session, username, request.current_password, request.new_password)
         return {"message": "Password changed successfully"}
+    finally:
+        session.close()
+
+
+@app.post("/api/users")
+def create_user(request: CreateUserRequest, username: str = Depends(verify_token)):
+    """Create a new user (requires manage_users permission)."""
+    from store.user_models import User, Role
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(
+            status_code=500,
+            detail="Database not initialized",
+        )
+
+    session = session_factory()
+    try:
+        # Check if user has manage_users permission
+        current_user = session.query(User).filter(User.username == username).first()
+        if not current_user or not current_user.has_permission("manage_users"):
+            raise HTTPException(
+                status_code=403,
+                detail="Permission denied: manage_users required",
+            )
+
+        # Check if username already exists
+        existing = session.query(User).filter(User.username == request.username).first()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Username already exists",
+            )
+
+        # Create new user
+        new_user = User(username=request.username)
+        new_user.set_password(request.password)
+
+        # Assign role
+        role = session.query(Role).filter(Role.name == request.role).first()
+        if role:
+            new_user.roles.append(role)
+
+        session.add(new_user)
+        session.commit()
+
+        logger.info(f"User created: {request.username}")
+        return UserResponse(
+            id=new_user.id,
+            username=new_user.username,
+            enabled=new_user.enabled,
+            roles=[r.name for r in new_user.roles],
+            created_at=new_user.created_at.isoformat() if new_user.created_at else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating user: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create user",
+        )
+    finally:
+        session.close()
+
+
+@app.get("/api/users")
+def list_users(username: str = Depends(verify_token)):
+    """List all users (requires manage_users permission)."""
+    from store.user_models import User
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(
+            status_code=500,
+            detail="Database not initialized",
+        )
+
+    session = session_factory()
+    try:
+        # Check if user has manage_users permission
+        current_user = session.query(User).filter(User.username == username).first()
+        if not current_user or not current_user.has_permission("manage_users"):
+            raise HTTPException(
+                status_code=403,
+                detail="Permission denied: manage_users required",
+            )
+
+        users = session.query(User).all()
+        return [
+            UserResponse(
+                id=u.id,
+                username=u.username,
+                enabled=u.enabled,
+                roles=[r.name for r in u.roles],
+                created_at=u.created_at.isoformat() if u.created_at else None,
+            )
+            for u in users
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing users: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to list users",
+        )
+    finally:
+        session.close()
+
+
+@app.put("/api/users/{user_id}")
+def update_user(user_id: int, request: UpdateUserRequest, username: str = Depends(verify_token)):
+    """Update a user (requires manage_users permission)."""
+    from store.user_models import User, Role
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(
+            status_code=500,
+            detail="Database not initialized",
+        )
+
+    session = session_factory()
+    try:
+        # Check if user has manage_users permission
+        current_user = session.query(User).filter(User.username == username).first()
+        if not current_user or not current_user.has_permission("manage_users"):
+            raise HTTPException(
+                status_code=403,
+                detail="Permission denied: manage_users required",
+            )
+
+        # Find user to update
+        user = session.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        # Update password if provided
+        if request.password:
+            user.set_password(request.password)
+
+        # Update enabled status if provided
+        if request.enabled is not None:
+            user.enabled = request.enabled
+
+        # Update role if provided
+        if request.role:
+            user.roles.clear()
+            role = session.query(Role).filter(Role.name == request.role).first()
+            if role:
+                user.roles.append(role)
+
+        session.commit()
+        logger.info(f"User updated: {user.username}")
+
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            enabled=user.enabled,
+            roles=[r.name for r in user.roles],
+            created_at=user.created_at.isoformat() if user.created_at else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error updating user: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update user",
+        )
+    finally:
+        session.close()
+
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: int, username: str = Depends(verify_token)):
+    """Delete a user (requires manage_users permission)."""
+    from store.user_models import User
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(
+            status_code=500,
+            detail="Database not initialized",
+        )
+
+    session = session_factory()
+    try:
+        # Check if user has manage_users permission
+        current_user = session.query(User).filter(User.username == username).first()
+        if not current_user or not current_user.has_permission("manage_users"):
+            raise HTTPException(
+                status_code=403,
+                detail="Permission denied: manage_users required",
+            )
+
+        # Find user to delete
+        user = session.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        # Prevent deleting the current user
+        if user.username == username:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete your own user account",
+            )
+
+        session.delete(user)
+        session.commit()
+        logger.info(f"User deleted: {user.username}")
+
+        return {"message": f"User {user.username} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error deleting user: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete user",
+        )
     finally:
         session.close()
 
