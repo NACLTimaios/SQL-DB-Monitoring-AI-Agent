@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GridLayout from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -36,9 +36,10 @@ export default function DashboardGrid({
     { x: 0, y: 4, w: 6, h: 3, i: 'performance', static: false },
   ]);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(window.innerWidth - 48);
+  const [containerWidth, setContainerWidth] = useState(1200);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load layout from localStorage
+  // Load layout from localStorage and measure container
   useEffect(() => {
     const savedLayout = localStorage.getItem('dashboard-layout');
     if (savedLayout) {
@@ -48,12 +49,19 @@ export default function DashboardGrid({
         console.error('Failed to load saved layout:', e);
       }
     }
+
+    // Measure container width on mount
+    if (containerRef.current) {
+      setContainerWidth(containerRef.current.offsetWidth);
+    }
   }, []);
 
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
-      setContainerWidth(window.innerWidth - 48);
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.offsetWidth);
+      }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -107,10 +115,10 @@ export default function DashboardGrid({
       </div>
 
       {/* Tab Content */}
-      <div className="p-6 max-w-full overflow-x-hidden">
+      <div ref={containerRef} className="p-6 max-w-full overflow-x-auto">
         {/* Metrics Tab */}
         {activeTab === 'metrics' && (
-          <div className="w-full">
+          <div style={{ width: containerWidth }}>
             {React.createElement(GridLayout as any, {
               className: 'layout',
               layout,
