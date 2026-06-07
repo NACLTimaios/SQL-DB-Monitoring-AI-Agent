@@ -4,11 +4,11 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import AgentHealthPanel from './widgets/AgentHealthPanel';
 import CapacityPanel from './widgets/CapacityPanel';
-import PerformancePanel from './widgets/PerformancePanel';
 import LocksPanel from './widgets/LocksPanel';
 import DatabaseSummaryPanel from './widgets/DatabaseSummaryPanel';
 import InsightsAlerts from './widgets/InsightsAlerts';
 import ActivityFeed from './widgets/ActivityFeed';
+import PerformanceMetrics from './widgets/PerformanceMetrics';
 import ChatBot from './ChatBot';
 
 interface DashboardGridProps {
@@ -29,14 +29,14 @@ export default function DashboardGrid({
   const [activeTab, setActiveTab] = useState<'metrics' | 'chatbot' | 'health'>('metrics');
   const [layout, setLayout] = useState<any[]>([
     { x: 0, y: 0, w: 2, h: 2, i: 'capacity', static: false },
-    { x: 2, y: 0, w: 2, h: 2, i: 'performance', static: false },
-    { x: 4, y: 0, w: 2, h: 2, i: 'locks', static: false },
-    { x: 0, y: 2, w: 2, h: 2, i: 'database', static: false },
-    { x: 2, y: 2, w: 2, h: 2, i: 'insights', static: false },
-    { x: 4, y: 2, w: 2, h: 2, i: 'activity', static: false },
+    { x: 2, y: 0, w: 2, h: 2, i: 'locks', static: false },
+    { x: 4, y: 0, w: 2, h: 2, i: 'database', static: false },
+    { x: 0, y: 2, w: 2, h: 2, i: 'insights', static: false },
+    { x: 2, y: 2, w: 4, h: 2, i: 'activity', static: false },
+    { x: 0, y: 4, w: 6, h: 3, i: 'performance', static: false },
   ]);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(window.innerWidth - 32);
+  const [containerWidth, setContainerWidth] = useState(window.innerWidth - 48);
 
   // Load layout from localStorage
   useEffect(() => {
@@ -65,21 +65,21 @@ export default function DashboardGrid({
   };
 
   const tabs = [
-    { id: 'metrics', label: '📊 Metrics', icon: '📊' },
-    { id: 'chatbot', label: '💬 Assistant', icon: '💬' },
-    { id: 'health', label: '❤️ Agent Health', icon: '❤️' },
+    { id: 'metrics', label: 'Metrics' },
+    { id: 'chatbot', label: 'Assistant' },
+    { id: 'health', label: 'Agent Health' },
   ] as const;
 
   return (
     <div className="min-h-screen bg-slate-900">
       {/* Tab Navigation */}
       <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur sticky top-20 z-40">
-        <div className="px-4 flex gap-1">
+        <div className="px-6 flex gap-8 items-center">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-4 font-medium transition-all border-b-2 ${
+              className={`px-0 py-4 text-sm font-medium transition-all border-b-2 whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'border-cyan-500 text-cyan-400'
                   : 'border-transparent text-slate-400 hover:text-slate-300'
@@ -88,27 +88,29 @@ export default function DashboardGrid({
               {tab.label}
             </button>
           ))}
-          <div className="flex-1" />
           {activeTab === 'metrics' && (
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`px-4 py-4 text-sm font-semibold transition-colors ${
-                isEditMode
-                  ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
-                  : 'text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              {isEditMode ? '✓ Done' : '✏️ Edit'}
-            </button>
+            <>
+              <div className="flex-1" />
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`px-3 py-2 text-xs font-medium rounded transition-colors ${
+                  isEditMode
+                    ? 'bg-green-600/30 text-green-400 hover:bg-green-600/40'
+                    : 'text-slate-400 hover:text-slate-300'
+                }`}
+              >
+                {isEditMode ? 'Done Editing' : 'Edit Layout'}
+              </button>
+            </>
           )}
         </div>
       </div>
 
       {/* Tab Content */}
-      <div className="p-4">
+      <div className="p-6">
         {/* Metrics Tab */}
         {activeTab === 'metrics' && (
-          <div>
+          <div className="space-y-6">
             {React.createElement(GridLayout as any, {
               className: 'layout',
               layout,
@@ -120,12 +122,11 @@ export default function DashboardGrid({
               isResizable: isEditMode,
               containerPadding: [0, 0],
               margin: [16, 16],
+              compactType: 'vertical',
+              preventCollision: false,
             } as any,
               <div key="capacity" className="grid-item">
                 <CapacityPanel insights={insightsPending?.capacity} />
-              </div>,
-              <div key="performance" className="grid-item">
-                <PerformancePanel insights={insightsPending?.performance} />
               </div>,
               <div key="locks" className="grid-item">
                 <LocksPanel insights={insightsPending?.locks} />
@@ -138,6 +139,9 @@ export default function DashboardGrid({
               </div>,
               <div key="activity" className="grid-item">
                 <ActivityFeed activity={activity} />
+              </div>,
+              <div key="performance" className="grid-item">
+                <PerformanceMetrics />
               </div>
             )}
           </div>
@@ -154,57 +158,69 @@ export default function DashboardGrid({
 
         {/* Agent Health Tab */}
         {activeTab === 'health' && (
-          <div className="max-w-6xl mx-auto space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 shadow-lg">
-                <h2 className="text-lg font-semibold text-slate-200 mb-4">Agent Status</h2>
+          <div className="max-w-6xl mx-auto space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Agent Status */}
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg">
+                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">Agent Status</h2>
                 <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
               </div>
 
-              <div className="space-y-4">
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 shadow-lg">
-                  <h2 className="text-lg font-semibold text-slate-200 mb-4">System Status</h2>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Orchestrator</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        healthData?.orchestrator_running
-                          ? 'bg-green-900/30 text-green-400'
-                          : 'bg-red-900/30 text-red-400'
-                      }`}>
-                        {healthData?.orchestrator_running ? '✓ Running' : '✗ Stopped'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Database Connection</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        healthData?.db_connected
-                          ? 'bg-green-900/30 text-green-400'
-                          : 'bg-red-900/30 text-red-400'
-                      }`}>
-                        {healthData?.db_connected ? '✓ Connected' : '✗ Disconnected'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Overall Status</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        healthData?.status === 'ok' || healthData?.status === 'healthy'
-                          ? 'bg-green-900/30 text-green-400'
-                          : 'bg-yellow-900/30 text-yellow-400'
-                      }`}>
-                        {healthData?.status?.toUpperCase() || 'UNKNOWN'}
-                      </span>
-                    </div>
+              {/* System Status */}
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg">
+                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">System Status</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">Orchestrator</span>
+                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                      healthData?.orchestrator_running
+                        ? 'bg-green-900/30 text-green-400'
+                        : 'bg-red-900/30 text-red-400'
+                    }`}>
+                      {healthData?.orchestrator_running ? 'Running' : 'Stopped'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">Database Connection</span>
+                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                      healthData?.db_connected
+                        ? 'bg-green-900/30 text-green-400'
+                        : 'bg-red-900/30 text-red-400'
+                    }`}>
+                      {healthData?.db_connected ? 'Connected' : 'Disconnected'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">Overall Status</span>
+                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                      healthData?.status === 'ok' || healthData?.status === 'healthy'
+                        ? 'bg-green-900/30 text-green-400'
+                        : 'bg-yellow-900/30 text-yellow-400'
+                    }`}>
+                      {healthData?.status?.toUpperCase() || 'UNKNOWN'}
+                    </span>
                   </div>
                 </div>
+              </div>
+            </div>
 
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 shadow-lg">
-                  <h2 className="text-lg font-semibold text-slate-200 mb-4">Domain Execution</h2>
-                  <div className="space-y-2 text-sm text-slate-400">
-                    <p>Last cycle: <span className="text-slate-200 font-mono text-xs">{agentStatus?.last_cycle ? new Date(agentStatus.last_cycle).toLocaleTimeString() : 'Unknown'}</span></p>
-                    <p>Domains: <span className="text-slate-200">{agentStatus?.domains_executed?.join(', ') || 'None'}</span></p>
-                    <p>Pending actions: <span className="text-slate-200 font-semibold">{agentStatus?.queue_size || 0}</span></p>
-                  </div>
+            {/* Domain Execution */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg">
+              <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">Domain Execution</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Last Cycle</p>
+                  <p className="text-sm font-mono text-slate-200">
+                    {agentStatus?.last_cycle ? new Date(agentStatus.last_cycle).toLocaleTimeString() : 'Unknown'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Active Domains</p>
+                  <p className="text-sm text-slate-200">{agentStatus?.domains_executed?.join(', ') || 'None'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Pending Actions</p>
+                  <p className="text-sm font-semibold text-cyan-400">{agentStatus?.queue_size || 0}</p>
                 </div>
               </div>
             </div>
