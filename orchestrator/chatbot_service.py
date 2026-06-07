@@ -121,11 +121,29 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
         # Remove trailing semicolon before processing
         query_clean = query.rstrip().rstrip(';')
 
-        # Only add LIMIT if query doesn't already have one
-        if 'LIMIT' not in query_clean.upper():
+        # Check if this is a write operation (INSERT, UPDATE, DELETE)
+        is_write_op = any(keyword in query_upper for keyword in ["INSERT", "UPDATE", "DELETE"])
+
+        # Only add LIMIT for SELECT queries
+        if not is_write_op and 'LIMIT' not in query_clean.upper():
             query_clean = f"{query_clean} LIMIT {min(limit, guardrails.get('max_rows_return', 1000))}"
 
         cursor.execute(query_clean)
+
+        # Handle write operations (no result set, just row count)
+        if is_write_op:
+            affected_rows = cursor.rowcount
+            cursor.close()
+            conn.commit()
+            conn.close()
+            # Return rows affected as JSON
+            return json.dumps({"rows_affected": affected_rows}, default=str, indent=2)
+
+        # Handle SELECT and other read operations
+        if cursor.description is None:
+            cursor.close()
+            conn.close()
+            return json.dumps({"message": "Query executed successfully"}, default=str, indent=2)
 
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
@@ -252,6 +270,16 @@ class ChatbotService:
 
             # Handle dictionaries with nested metrics
             if isinstance(data, dict):
+                # Check for write operation result (rows_affected)
+                if 'rows_affected' in data:
+                    rows = data['rows_affected']
+                    if rows == 0:
+                        return "No rows were affected."
+                    elif rows == 1:
+                        return "1 row was successfully modified."
+                    else:
+                        return f"{rows} rows were successfully modified."
+
                 # Check for metrics response (has connections, disk_usage, cache_hit_ratio)
                 if 'connections' in data and 'disk_usage' in data:
                     lines = []
