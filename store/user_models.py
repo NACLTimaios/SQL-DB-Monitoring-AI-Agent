@@ -3,8 +3,10 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Table, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
-from werkzeug.security import generate_password_hash, check_password_hash
+from passlib.context import CryptContext
 from store import Base
+
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 # Association tables for many-to-many relationships
 user_roles_association = Table(
@@ -101,12 +103,12 @@ class User(Base):
     profile = relationship('UserProfile', back_populates='user', uselist=False, cascade='all, delete-orphan')
 
     def set_password(self, password: str):
-        """Hash and set the user's password."""
-        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+        """Hash and set the user's password using Argon2."""
+        self.password_hash = pwd_context.hash(password)
 
     def check_password(self, password: str) -> bool:
         """Check if the provided password matches the hash."""
-        return check_password_hash(self.password_hash, password)
+        return pwd_context.verify(password, self.password_hash)
 
     def has_permission(self, permission_name: str) -> bool:
         """Check if user has a specific permission through any of their roles."""
