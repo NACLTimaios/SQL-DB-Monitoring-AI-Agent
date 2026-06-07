@@ -195,10 +195,10 @@ class GoogleProvider(LLMProvider):
                 tools=tools_schema if tools_schema else None,
             )
 
-            assistant_message = response.text if response.text else ""
+            assistant_message = ""
             tools_used = []
 
-            # Process tool calls if any
+            # Process tool calls and text responses
             if response.candidates and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
                     if part.function_call:
@@ -207,10 +207,19 @@ class GoogleProvider(LLMProvider):
                         # Extract kwargs from function call
                         params = dict(part.function_call.args)
                         tool_result = self._execute_tool(tool_name, params)
-                        assistant_message += f"\n[Executed {tool_name}]\n{tool_result}\n"
+                        assistant_message += f"[Executed {tool_name}]\n{tool_result}\n"
+                    elif hasattr(part, "text") and part.text:
+                        assistant_message += part.text
+
+            # Fallback to response.text if no parts processed
+            if not assistant_message and hasattr(response, "text"):
+                try:
+                    assistant_message = response.text
+                except Exception:
+                    pass
 
             return ProviderResponse(
-                assistant_message=assistant_message,
+                assistant_message=assistant_message.strip(),
                 tools_used=tools_used,
                 stop_reason=response.candidates[0].finish_reason.name if response.candidates else "STOP",
             )
