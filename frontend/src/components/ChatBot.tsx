@@ -26,7 +26,10 @@ export default function ChatBot() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const response = await axios.get('/api/chatbot/history?limit=50');
+        const token = localStorage.getItem('token');
+        const response = await axios.get('/api/chatbot/history?limit=50', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setMessages(response.data);
         setError(null);
       } catch (err) {
@@ -47,9 +50,12 @@ export default function ChatBot() {
     setError(null);
 
     try {
-      const response = await axios.post('/api/chatbot/chat', {
-        message: userMessage,
-      });
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        '/api/chatbot/chat',
+        { message: userMessage },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       const data = response.data;
       setMessages((prev) => [

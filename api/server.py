@@ -466,8 +466,10 @@ def chat_with_bot(message: ChatMessage, _: str = Depends(verify_token)):
         config_row = session.query(ChatbotConfig).first()
         config = config_row.to_dict() if config_row else {}
 
-        # Check if API key is set
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        # Check if API key is set for the configured provider
+        provider = config.get("llm_provider", "anthropic")
+        api_key_env_var = f"{provider.upper()}_API_KEY"
+        if not os.environ.get(api_key_env_var):
             raise HTTPException(status_code=503, detail="API key not configured")
 
         # Get monitored DB config

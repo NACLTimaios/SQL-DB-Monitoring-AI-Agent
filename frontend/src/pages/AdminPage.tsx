@@ -40,9 +40,11 @@ export default function AdminPage() {
   const loadConfig = async () => {
     try {
       setLoading(true);
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
       const [configRes, toolsRes] = await Promise.all([
-        axios.get('/api/chatbot/config'),
-        axios.get('/api/chatbot/tools'),
+        axios.get('/api/chatbot/config', { headers }),
+        axios.get('/api/chatbot/tools', { headers }),
       ]);
 
       setConfig(configRes.data);
@@ -64,7 +66,10 @@ export default function AdminPage() {
 
     try {
       setSaving(true);
-      await axios.post('/api/chatbot/config', config);
+      const token = localStorage.getItem('token');
+      await axios.post('/api/chatbot/config', config, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setMessage({
         type: 'success',
         text: 'Configuration saved successfully',
