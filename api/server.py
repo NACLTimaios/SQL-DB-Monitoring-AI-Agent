@@ -437,10 +437,10 @@ def get_chatbot_config(_: str = Depends(verify_token)):
 
 ## Database Schema
 The database contains the following tables:
-- **customers**: customer_id, name, email, city, created_at
-- **products**: product_id, name, category, price, stock, created_at
-- **orders**: order_id, customer_id, order_date, status, created_at
-- **order_items**: item_id, order_id, product_id, quantity, price, created_at
+- **customers**: id (PRIMARY KEY), name, email, created_at
+- **products**: product_id (PRIMARY KEY), name, category, price, stock, created_at
+- **orders**: order_id (PRIMARY KEY), customer_id (FOREIGN KEY), order_date, status, created_at
+- **order_items**: item_id (PRIMARY KEY), order_id (FOREIGN KEY), product_id (FOREIGN KEY), quantity, price, created_at
 
 ## Guidelines for Queries
 1. Always use the query_database tool to execute SQL queries
