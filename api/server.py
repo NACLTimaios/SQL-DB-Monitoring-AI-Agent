@@ -453,7 +453,9 @@ The database contains the following tables:
 5. Respond with business-friendly summaries, not raw JSON
 
 ## Safety Rules
-- Only execute SELECT queries (no INSERT, UPDATE, DELETE, CREATE, ALTER, DROP)
+- Execute queries according to configured guardrails
+- Write operations (INSERT, UPDATE, DELETE) may be enabled by administrators
+- DDL operations (CREATE, ALTER, DROP) are only allowed if explicitly enabled
 - Limit results to 1000 rows maximum
 - Queries timeout after 5 seconds
 - Always explain what query you're executing before running it

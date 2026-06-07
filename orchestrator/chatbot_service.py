@@ -29,7 +29,9 @@ The database contains the following tables:
 5. Respond with business-friendly summaries, not raw JSON
 
 ## Safety Rules
-- Only execute SELECT queries (no INSERT, UPDATE, DELETE, CREATE, ALTER, DROP)
+- Execute queries according to configured guardrails
+- Write operations (INSERT, UPDATE, DELETE) may be enabled by administrators
+- DDL operations (CREATE, ALTER, DROP) are only allowed if explicitly enabled
 - Limit results to 1000 rows maximum
 - Queries timeout after 5 seconds
 - Always explain what query you're executing before running it
@@ -88,14 +90,24 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
     limit = int(params.get("limit", 100))
 
     # Guardrails checks
-    if not query.strip().upper().startswith("SELECT"):
-        return "Error: Only SELECT queries are allowed"
+    allow_writes = guardrails.get("allow_writes", False)
+    allow_ddl = guardrails.get("allow_ddl", False)
 
-    if any(
-        keyword in query.upper()
-        for keyword in ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"]
-    ):
-        return "Error: Writes and DDL not allowed"
+    query_upper = query.strip().upper()
+
+    # Check for DDL operations
+    if any(keyword in query_upper for keyword in ["CREATE", "ALTER", "DROP"]):
+        if not allow_ddl:
+            return "Error: DDL operations (CREATE, ALTER, DROP) are not allowed"
+
+    # Check for DML write operations
+    if any(keyword in query_upper for keyword in ["INSERT", "UPDATE", "DELETE"]):
+        if not allow_writes:
+            return "Error: Write operations (INSERT, UPDATE, DELETE) are not allowed"
+
+    # If writes allowed, accept INSERT/UPDATE/DELETE. Otherwise require SELECT
+    if not allow_writes and not query_upper.startswith("SELECT"):
+        return "Error: Only SELECT queries are allowed"
 
     try:
         conn = psycopg2.connect(**db_config)
