@@ -133,129 +133,131 @@ export default function DashboardGrid({
         </div>
       </div>
 
-      {/* Tab Content */}
-      <div ref={containerRef} className="p-6 max-w-full overflow-x-hidden h-[calc(100vh-180px)] flex flex-col">
-        {/* Metrics Tab */}
-        {activeTab === 'metrics' && (
-          <div ref={metricsContainerRef} style={{ width: containerWidth, flex: 1, minHeight: 0 }}>
-            {React.createElement(GridLayout as any, {
-              className: 'layout',
-              layout,
-              onLayoutChange: handleLayoutChange,
-              cols: 6,
-              rowHeight: rowHeight,
-              width: containerWidth,
-              isDraggable: isEditMode,
-              isResizable: isEditMode,
-              containerPadding: [0, 0],
-              margin: [16, 16],
-              compactType: 'vertical',
-              preventCollision: false,
-            } as any,
-              <div key="capacity" className="grid-item">
-                <CapacityPanel insights={insightsPending?.capacity} />
-              </div>,
-              <div key="locks" className="grid-item">
-                <LocksPanel insights={insightsPending?.locks} />
-              </div>,
-              <div key="database" className="grid-item">
-                <DatabaseSummaryPanel summary={dbSummary} />
-              </div>,
-              <div key="insights" className="grid-item">
-                <InsightsAlerts insights={insightsPending} />
-              </div>,
-              <div key="activity" className="grid-item">
-                <ActivityFeed activity={activity} />
-              </div>,
-              <div key="performance" className="grid-item">
-                <PerformanceMetrics />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Chatbot Tab */}
-        {activeTab === 'chatbot' && (
-          <div className="w-full flex-1 min-h-0">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-lg h-full">
-              <ChatBot />
-            </div>
-          </div>
-        )}
-
-        {/* Agent Health Tab */}
-        {activeTab === 'health' && (
-          <div className="w-full flex-1 min-h-0 flex flex-col gap-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-shrink-0">
-              {/* Agent Status */}
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg overflow-hidden flex flex-col h-96">
-                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">Agent Status</h2>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
+      {/* Tab Content - Metrics and Health */}
+      {(activeTab === 'metrics' || activeTab === 'health') && (
+        <div ref={containerRef} className="p-6 max-w-full overflow-x-hidden h-[calc(100vh-180px)] flex flex-col flex-1 min-h-0">
+          {/* Metrics Tab */}
+          {activeTab === 'metrics' && (
+            <div ref={metricsContainerRef} style={{ width: containerWidth, flex: 1, minHeight: 0 }}>
+              {React.createElement(GridLayout as any, {
+                className: 'layout',
+                layout,
+                onLayoutChange: handleLayoutChange,
+                cols: 6,
+                rowHeight: rowHeight,
+                width: containerWidth,
+                isDraggable: isEditMode,
+                isResizable: isEditMode,
+                containerPadding: [0, 0],
+                margin: [16, 16],
+                compactType: 'vertical',
+                preventCollision: false,
+              } as any,
+                <div key="capacity" className="grid-item">
+                  <CapacityPanel insights={insightsPending?.capacity} />
+                </div>,
+                <div key="locks" className="grid-item">
+                  <LocksPanel insights={insightsPending?.locks} />
+                </div>,
+                <div key="database" className="grid-item">
+                  <DatabaseSummaryPanel summary={dbSummary} />
+                </div>,
+                <div key="insights" className="grid-item">
+                  <InsightsAlerts insights={insightsPending} />
+                </div>,
+                <div key="activity" className="grid-item">
+                  <ActivityFeed activity={activity} />
+                </div>,
+                <div key="performance" className="grid-item">
+                  <PerformanceMetrics />
                 </div>
-              </div>
+              )}
+            </div>
+          )}
 
-              {/* System Status */}
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg flex flex-col h-96">
-                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">System Status</h2>
-                <div className="space-y-4 flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Orchestrator</span>
-                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      healthData?.orchestrator_running
-                        ? 'bg-green-900/30 text-green-400'
-                        : 'bg-red-900/30 text-red-400'
-                    }`}>
-                      {healthData?.orchestrator_running ? 'Running' : 'Stopped'}
-                    </span>
+          {/* Agent Health Tab */}
+          {activeTab === 'health' && (
+            <div className="w-full flex-1 min-h-0 flex flex-col gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-shrink-0">
+                {/* Agent Status */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg overflow-hidden flex flex-col h-96">
+                  <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">Agent Status</h2>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Database Connection</span>
-                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      healthData?.db_connected
-                        ? 'bg-green-900/30 text-green-400'
-                        : 'bg-red-900/30 text-red-400'
-                    }`}>
-                      {healthData?.db_connected ? 'Connected' : 'Disconnected'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Overall Status</span>
-                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      healthData?.status === 'ok' || healthData?.status === 'healthy'
-                        ? 'bg-green-900/30 text-green-400'
-                        : 'bg-yellow-900/30 text-yellow-400'
-                    }`}>
-                      {healthData?.status?.toUpperCase() || 'UNKNOWN'}
-                    </span>
+                </div>
+
+                {/* System Status */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg flex flex-col h-96">
+                  <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">System Status</h2>
+                  <div className="space-y-4 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-400">Orchestrator</span>
+                      <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                        healthData?.orchestrator_running
+                          ? 'bg-green-900/30 text-green-400'
+                          : 'bg-red-900/30 text-red-400'
+                      }`}>
+                        {healthData?.orchestrator_running ? 'Running' : 'Stopped'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-400">Database Connection</span>
+                      <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                        healthData?.db_connected
+                          ? 'bg-green-900/30 text-green-400'
+                          : 'bg-red-900/30 text-red-400'
+                      }`}>
+                        {healthData?.db_connected ? 'Connected' : 'Disconnected'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-400">Overall Status</span>
+                      <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                        healthData?.status === 'ok' || healthData?.status === 'healthy'
+                          ? 'bg-green-900/30 text-green-400'
+                          : 'bg-yellow-900/30 text-yellow-400'
+                      }`}>
+                        {healthData?.status?.toUpperCase() || 'UNKNOWN'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Domain Execution */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg flex-shrink-0">
-              <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">Domain Execution</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Last Cycle</p>
-                  <p className="text-sm font-mono text-slate-200">
-                    {agentStatus?.last_cycle ? new Date(agentStatus.last_cycle).toLocaleTimeString() : 'Unknown'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Active Domains</p>
-                  <p className="text-sm text-slate-200">{agentStatus?.domains_executed?.join(', ') || 'None'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Pending Actions</p>
-                  <p className="text-sm font-semibold text-cyan-400">{agentStatus?.queue_size || 0}</p>
+              {/* Domain Execution */}
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg flex-shrink-0">
+                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">Domain Execution</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Last Cycle</p>
+                    <p className="text-sm font-mono text-slate-200">
+                      {agentStatus?.last_cycle ? new Date(agentStatus.last_cycle).toLocaleTimeString() : 'Unknown'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Active Domains</p>
+                    <p className="text-sm text-slate-200">{agentStatus?.domains_executed?.join(', ') || 'None'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Pending Actions</p>
+                    <p className="text-sm font-semibold text-cyan-400">{agentStatus?.queue_size || 0}</p>
+                  </div>
                 </div>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Chatbot Tab - Full Width */}
+      {activeTab === 'chatbot' && (
+        <div className="w-full max-w-full h-[calc(100vh-180px)] flex flex-col overflow-hidden">
+          <div className="p-6 h-full flex flex-col min-h-0">
+            <ChatBot />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <style>{`
         :global(.react-grid-layout) {
