@@ -161,9 +161,11 @@ export default function DashboardGrid({
           <div className="max-w-6xl mx-auto space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Agent Status */}
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg">
-                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide">Agent Status</h2>
-                <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-6 shadow-lg overflow-hidden flex flex-col" style={{ minHeight: '400px' }}>
+                <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wide flex-shrink-0">Agent Status</h2>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <AgentHealthPanel agentStatus={agentStatus} healthData={healthData} />
+                </div>
               </div>
 
               {/* System Status */}
