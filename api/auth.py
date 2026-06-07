@@ -36,6 +36,11 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 # Password utilities
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed one."""
@@ -115,6 +120,28 @@ def get_current_user(session, token: str):
     except Exception as e:
         logger.error(f"Get current user error: {e}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+
+
+def change_user_password(session, username: str, current_password: str, new_password: str) -> None:
+    """Change user's password."""
+    try:
+        from store.user_models import User
+
+        user = session.query(User).filter(User.username == username).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+        if not user.check_password(current_password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+
+        user.set_password(new_password)
+        session.commit()
+        logger.info(f"Password changed for user: {username}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error changing password: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to change password")
 
 
 # User initialization
