@@ -47,9 +47,9 @@ export default function PerformanceMetrics() {
   const currentMetric = metricConfig[metric];
 
   return (
-    <div className="space-y-4">
+    <div className="h-full w-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col overflow-hidden">
       {/* Controls */}
-      <div className="flex gap-4 items-center flex-wrap">
+      <div className="flex gap-4 items-center flex-wrap mb-4 flex-shrink-0">
         <div className="flex gap-2">
           {(['latency', 'throughput', 'errors'] as const).map((m) => (
             <button
@@ -84,9 +84,10 @@ export default function PerformanceMetrics() {
       </div>
 
       {/* Chart */}
-      <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-slate-300 mb-4">{currentMetric.label}</h3>
-        <ResponsiveContainer width="100%" height={300}>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <h3 className="text-sm font-semibold text-slate-300 mb-4 flex-shrink-0">{currentMetric.label}</h3>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.1)" />
             <XAxis dataKey="time" tick={{ fontSize: 11 }} stroke="rgba(148, 163, 184, 0.5)" />
@@ -105,10 +106,11 @@ export default function PerformanceMetrics() {
             />
           </LineChart>
         </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4 mt-4 flex-shrink-0">
         {data.length > 0 && (
           <>
             <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-3">

@@ -107,17 +107,17 @@ export default function DashboardGrid({
       </div>
 
       {/* Tab Content */}
-      <div className="p-6">
+      <div className="p-6 max-w-full overflow-x-hidden">
         {/* Metrics Tab */}
         {activeTab === 'metrics' && (
-          <div className="space-y-6">
+          <div className="space-y-6 max-w-7xl mx-auto">
             {React.createElement(GridLayout as any, {
               className: 'layout',
               layout,
               onLayoutChange: handleLayoutChange,
               cols: 6,
               rowHeight: 100,
-              width: containerWidth,
+              width: Math.min(containerWidth, 1280),
               isDraggable: isEditMode,
               isResizable: isEditMode,
               containerPadding: [0, 0],
