@@ -85,6 +85,15 @@ def cmd_run(config: str, log_level: str) -> None:
         _state["engine"] = engine
         _state["session_factory"] = get_session(engine)
 
+        # Bootstrap user management system
+        from api.auth import bootstrap_roles_and_permissions, bootstrap_default_user
+        session = _state["session_factory"]()
+        try:
+            bootstrap_roles_and_permissions(session)
+            bootstrap_default_user(session)
+        finally:
+            session.close()
+
         signal.signal(signal.SIGTERM, _handle_sigterm)
 
         api_cfg = cfg.get("api", {})
