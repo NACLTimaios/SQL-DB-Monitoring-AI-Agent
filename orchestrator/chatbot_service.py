@@ -211,6 +211,40 @@ class ChatbotService:
         self.tools = config.get("tools", list(AVAILABLE_TOOLS.keys()))
         self.guardrails = config.get("guardrails", DEFAULT_GUARDRAILS)
 
+    def _clean_assistant_message(self, message: str) -> str:
+        """Clean assistant message by removing execution markers but keeping results."""
+        import re
+        import json
+
+        # Remove [Executed tool_name] markers only
+        message = re.sub(r'\[Executed [^\]]+\]\n?', '', message)
+
+        # Try to parse and format JSON tool results for readability
+        # Look for JSON arrays that contain result objects
+        def format_json_results(match):
+            try:
+                data = json.loads(match.group(0))
+                if isinstance(data, list) and len(data) > 0:
+                    # Format as natural language summary
+                    if 'count' in data[0]:
+                        return f" The result is: {data[0]['count']}."
+                    elif 'avg' in data[0]:
+                        return f" The average is: {data[0]['avg']}."
+                    else:
+                        # Return the JSON as-is if we can't format it nicely
+                        return match.group(0)
+                return match.group(0)
+            except:
+                return match.group(0)
+
+        # Format JSON results
+        message = re.sub(r'\[\s*\{\s*"[^}]+\}\s*\]', format_json_results, message)
+
+        # Clean up multiple newlines
+        message = re.sub(r'\n\n+', ' ', message)
+
+        return message.strip()
+
     def chat(self, user_message: str) -> dict:
         """Process a user message and return assistant response.
 
@@ -229,8 +263,11 @@ class ChatbotService:
             # Send message through provider
             response = provider.chat(user_message, AVAILABLE_TOOLS)
 
+            # Clean the message to remove tool execution details
+            cleaned_message = self._clean_assistant_message(response.assistant_message)
+
             return {
-                "assistant_message": response.assistant_message,
+                "assistant_message": cleaned_message,
                 "tools_used": response.tools_used,
                 "stop_reason": response.stop_reason,
                 "error": response.error,
