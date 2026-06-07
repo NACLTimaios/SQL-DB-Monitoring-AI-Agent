@@ -224,45 +224,165 @@ class ChatbotService:
         # Remove [Executed tool_name] markers
         message = re.sub(r'\[Executed [^\]]+\]\n?', '', message)
 
-        # Try to parse and format JSON tool results
-        def format_json_results(match):
+        # Extract and format all JSON objects and arrays
+        def format_json(json_str: str) -> str:
+            """Format JSON data as natural language."""
             try:
-                json_str = match.group(0)
                 data = json.loads(json_str)
+            except:
+                return json_str
 
-                if not isinstance(data, list) or len(data) == 0:
-                    return json_str
+            # Handle dictionaries with nested metrics
+            if isinstance(data, dict):
+                # Check for metrics response (has connections, disk_usage, cache_hit_ratio)
+                if 'connections' in data and 'disk_usage' in data:
+                    lines = []
 
-                # Single row with count/sum/avg
+                    # Format connections
+                    if isinstance(data.get('connections'), dict):
+                        conns = data['connections']
+                        lines.append(f"Connections: {conns.get('active', 0)} active / {conns.get('max_connections', 0)} max ({conns.get('percent', 0):.1f}%)")
+
+                    # Format disk usage
+                    if isinstance(data.get('disk_usage'), dict):
+                        disk = data['disk_usage']
+                        lines.append(f"Disk: {disk.get('size_gb', 0):.2f} GB used")
+
+                    # Format cache hit ratio
+                    if isinstance(data.get('cache_hit_ratio'), dict):
+                        cache = data['cache_hit_ratio']
+                        lines.append(f"Cache Hit Ratio: Heap {cache.get('heap_hit_ratio', 0):.1%}, Index {cache.get('index_hit_ratio', 0):.1%}")
+
+                    return " | ".join(lines)
+
+                # Check for locks response
+                if 'waiting_sessions' in data or 'blocking_chains' in data:
+                    lines = []
+
+                    waiting = data.get('waiting_sessions', [])
+                    blocking = data.get('blocking_chains', [])
+
+                    if waiting:
+                        lines.append(f"{len(waiting)} waiting session(s)")
+                    if blocking:
+                        lines.append(f"{len(blocking)} blocking chain(s)")
+
+                    if not lines:
+                        lines.append("No locks detected")
+
+                    return " | ".join(lines)
+
+                # Generic nested object - format as key-value pairs
+                if data:
+                    pairs = []
+                    for key, value in data.items():
+                        if key not in ['created_at', 'updated_at']:
+                            if isinstance(value, dict):
+                                # For nested dicts, show count or first few items
+                                if value:
+                                    pairs.append(f"{key}: {len(value)} items" if isinstance(value, dict) else f"{key}: {value}")
+                            elif isinstance(value, (int, float)):
+                                if isinstance(value, float):
+                                    pairs.append(f"{key}: {value:.2f}")
+                                else:
+                                    pairs.append(f"{key}: {value}")
+                            elif value:
+                                pairs.append(f"{key}: {value}")
+
+                    if pairs:
+                        return " | ".join(pairs)
+
+                return json_str
+
+            # Handle lists
+            if isinstance(data, list):
+                if not data:
+                    return "No results found."
+
+                # Single row with aggregate functions
                 if len(data) == 1:
                     row = data[0]
-                    if 'count' in row:
-                        return f" The result is: {row['count']}."
-                    elif 'avg' in row:
-                        return f" The average is: {row['avg']}."
-                    elif 'sum' in row:
-                        return f" The total is: {row['sum']}."
+                    if isinstance(row, dict):
+                        if 'count' in row:
+                            return f"The result is: {row['count']}."
+                        elif 'avg' in row:
+                            return f"The average is: {row['avg']:.2f}." if isinstance(row['avg'], float) else f"The average is: {row['avg']}."
+                        elif 'sum' in row:
+                            return f"The total is: {row['sum']}." if isinstance(row['sum'], (int, float)) else f"The total is: {row['sum']}."
+                        elif 'max' in row:
+                            return f"The maximum is: {row['max']}."
+                        elif 'min' in row:
+                            return f"The minimum is: {row['min']}."
 
-                # Multiple rows - create a summary
+                # Multiple rows - format as list
                 if len(data) > 1:
                     summary_lines = []
                     for i, row in enumerate(data, 1):
-                        # Format each row nicely
-                        parts = []
-                        for key, value in row.items():
-                            if key != 'created_at' and key != 'updated_at':  # Skip timestamps
-                                parts.append(f"{key}: {value}")
-                        summary_lines.append(f"{i}. " + ", ".join(parts))
+                        if isinstance(row, dict):
+                            # Format each row nicely
+                            parts = []
+                            for key, value in row.items():
+                                if key not in ['created_at', 'updated_at', 'id']:
+                                    if isinstance(value, float):
+                                        parts.append(f"{key}: {value:.2f}")
+                                    else:
+                                        parts.append(f"{key}: {value}")
+                            if parts:
+                                summary_lines.append(f"{i}. " + " | ".join(parts))
+                        else:
+                            summary_lines.append(f"{i}. {row}")
 
-                    return "\n" + "\n".join(summary_lines)
+                    if summary_lines:
+                        return "\n" + "\n".join(summary_lines)
 
                 return json_str
-            except:
-                return match.group(0)
 
-        # Match and format JSON arrays (works with multi-line JSON)
-        pattern = r'\[\s*(?:\{\s*"[^"]+"\s*:\s*[^}]*\}\s*,?\s*)*\{\s*"[^"]+"\s*:\s*[^}]*\}\s*\]'
-        message = re.sub(pattern, format_json_results, message, flags=re.DOTALL)
+            return json_str
+
+        # Pattern to match JSON objects and arrays at various nesting levels
+        # This tries to find balanced braces and brackets
+        def find_json_blocks(text):
+            """Find all JSON blocks (objects and arrays) in text."""
+            blocks = []
+            depth = 0
+            start = -1
+            in_string = False
+            escape_next = False
+
+            for i, char in enumerate(text):
+                if escape_next:
+                    escape_next = False
+                    continue
+
+                if char == '\\':
+                    escape_next = True
+                    continue
+
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+
+                if in_string:
+                    continue
+
+                if char in '{[':
+                    if depth == 0:
+                        start = i
+                    depth += 1
+                elif char in '}]':
+                    depth -= 1
+                    if depth == 0 and start != -1:
+                        blocks.append((start, i + 1))
+                        start = -1
+
+            return blocks
+
+        # Find and replace all JSON blocks
+        json_blocks = find_json_blocks(message)
+        for start, end in reversed(json_blocks):  # Reverse to maintain indices
+            json_text = message[start:end]
+            formatted = format_json(json_text)
+            message = message[:start] + formatted + message[end:]
 
         # Clean up multiple newlines
         message = re.sub(r'\n\n+', '\n', message)
