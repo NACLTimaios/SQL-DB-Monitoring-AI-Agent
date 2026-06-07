@@ -14,8 +14,13 @@ import json
 import logging
 import sys
 import threading
+from pathlib import Path
 
 import click
+from dotenv import load_dotenv
+
+# Load environment variables from .env file at startup
+load_dotenv(Path(__file__).parent / ".env")
 
 # ---------------------------------------------------------------------------
 # Helpers
