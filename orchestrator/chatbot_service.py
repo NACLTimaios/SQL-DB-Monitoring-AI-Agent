@@ -100,7 +100,9 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
     try:
         conn = psycopg2.connect(**db_config)
         cursor = conn.cursor()
-        cursor.execute(f"{query} LIMIT {min(limit, guardrails.get('max_rows_return', 1000))}")
+        # Remove trailing semicolon before adding LIMIT
+        query_clean = query.rstrip().rstrip(';')
+        cursor.execute(f"{query_clean} LIMIT {min(limit, guardrails.get('max_rows_return', 1000))}")
 
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
