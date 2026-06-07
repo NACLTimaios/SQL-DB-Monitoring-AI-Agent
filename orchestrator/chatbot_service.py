@@ -13,10 +13,10 @@ DEFAULT_SYSTEM_PROMPT = """You are a database assistant for the 'shopdb' Postgre
 
 ## Database Schema
 The database contains the following tables:
-- **customers**: customer_id, name, email, city, created_at
-- **products**: product_id, name, category, price, stock, created_at
-- **orders**: order_id, customer_id, order_date, status, created_at
-- **order_items**: item_id, order_id, product_id, quantity, price, created_at
+- **customers**: id (PRIMARY KEY), name, email, created_at
+- **products**: product_id (PRIMARY KEY), name, category, price, stock, created_at
+- **orders**: order_id (PRIMARY KEY), customer_id (FOREIGN KEY), order_date, status, created_at
+- **order_items**: item_id (PRIMARY KEY), order_id (FOREIGN KEY), product_id (FOREIGN KEY), quantity, price, created_at
 
 ## Guidelines for Queries
 1. Always use the query_database tool to execute SQL queries
@@ -100,9 +100,14 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
     try:
         conn = psycopg2.connect(**db_config)
         cursor = conn.cursor()
-        # Remove trailing semicolon before adding LIMIT
+        # Remove trailing semicolon before processing
         query_clean = query.rstrip().rstrip(';')
-        cursor.execute(f"{query_clean} LIMIT {min(limit, guardrails.get('max_rows_return', 1000))}")
+
+        # Only add LIMIT if query doesn't already have one
+        if 'LIMIT' not in query_clean.upper():
+            query_clean = f"{query_clean} LIMIT {min(limit, guardrails.get('max_rows_return', 1000))}"
+
+        cursor.execute(query_clean)
 
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
@@ -212,36 +217,55 @@ class ChatbotService:
         self.guardrails = config.get("guardrails", DEFAULT_GUARDRAILS)
 
     def _clean_assistant_message(self, message: str) -> str:
-        """Clean assistant message by removing execution markers but keeping results."""
+        """Clean assistant message by formatting JSON results as natural language."""
         import re
         import json
 
-        # Remove [Executed tool_name] markers only
+        # Remove [Executed tool_name] markers
         message = re.sub(r'\[Executed [^\]]+\]\n?', '', message)
 
-        # Try to parse and format JSON tool results for readability
-        # Look for JSON arrays that contain result objects
+        # Try to parse and format JSON tool results
         def format_json_results(match):
             try:
-                data = json.loads(match.group(0))
-                if isinstance(data, list) and len(data) > 0:
-                    # Format as natural language summary
-                    if 'count' in data[0]:
-                        return f" The result is: {data[0]['count']}."
-                    elif 'avg' in data[0]:
-                        return f" The average is: {data[0]['avg']}."
-                    else:
-                        # Return the JSON as-is if we can't format it nicely
-                        return match.group(0)
-                return match.group(0)
+                json_str = match.group(0)
+                data = json.loads(json_str)
+
+                if not isinstance(data, list) or len(data) == 0:
+                    return json_str
+
+                # Single row with count/sum/avg
+                if len(data) == 1:
+                    row = data[0]
+                    if 'count' in row:
+                        return f" The result is: {row['count']}."
+                    elif 'avg' in row:
+                        return f" The average is: {row['avg']}."
+                    elif 'sum' in row:
+                        return f" The total is: {row['sum']}."
+
+                # Multiple rows - create a summary
+                if len(data) > 1:
+                    summary_lines = []
+                    for i, row in enumerate(data, 1):
+                        # Format each row nicely
+                        parts = []
+                        for key, value in row.items():
+                            if key != 'created_at' and key != 'updated_at':  # Skip timestamps
+                                parts.append(f"{key}: {value}")
+                        summary_lines.append(f"{i}. " + ", ".join(parts))
+
+                    return "\n" + "\n".join(summary_lines)
+
+                return json_str
             except:
                 return match.group(0)
 
-        # Format JSON results
-        message = re.sub(r'\[\s*\{\s*"[^}]+\}\s*\]', format_json_results, message)
+        # Match and format JSON arrays (works with multi-line JSON)
+        pattern = r'\[\s*(?:\{\s*"[^"]+"\s*:\s*[^}]*\}\s*,?\s*)*\{\s*"[^"]+"\s*:\s*[^}]*\}\s*\]'
+        message = re.sub(pattern, format_json_results, message, flags=re.DOTALL)
 
         # Clean up multiple newlines
-        message = re.sub(r'\n\n+', ' ', message)
+        message = re.sub(r'\n\n+', '\n', message)
 
         return message.strip()
 
