@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 interface ChatbotConfig {
@@ -24,6 +25,7 @@ interface AvailableTools {
 }
 
 export default function AdminPage() {
+  const navigate = useNavigate();
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
   const [availableTools, setAvailableTools] = useState<AvailableTools>({});
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -132,9 +134,17 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-brand-dark p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-100 mb-8">
-          Chatbot Configuration
-        </h1>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-gray-100">
+            Chatbot Configuration
+          </h1>
+          <button
+            onClick={() => navigate('/')}
+            className="px-4 py-2 text-sm font-semibold text-gray-300 hover:text-gray-100 border border-gray-700 hover:border-gray-600 rounded-lg transition-colors"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
 
         {/* Status message */}
         {message && (
