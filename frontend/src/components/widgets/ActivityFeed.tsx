@@ -3,7 +3,7 @@
 export default function ActivityFeed({ activity }: any) {
   if (!activity || activity.length === 0) {
     return (
-      <div className="h-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-4">
+      <div className="h-full w-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-4 overflow-hidden">
         <h3 className="text-sm font-semibold text-slate-300 mb-2">Recent Activity</h3>
         <p className="text-slate-400">No recent activity</p>
       </div>
@@ -22,16 +22,18 @@ export default function ActivityFeed({ activity }: any) {
   };
 
   return (
-    <div className="h-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col">
-      <h3 className="text-sm font-semibold text-slate-300 mb-3">Recent Activity</h3>
-      <div className="space-y-2 overflow-y-auto flex-1">
+    <div className="h-full w-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col overflow-hidden">
+      <h3 className="text-sm font-semibold text-slate-300 mb-2 flex-shrink-0">Recent Activity</h3>
+      <div className="space-y-1 overflow-y-auto flex-1 min-h-0">
         {activity.slice(0, 8).map((item: any, idx: number) => (
           <div key={idx} className={`p-2 rounded text-xs ${getSeverityColor(item.severity)}`}>
-            <div className="flex justify-between items-start">
-              <span className="font-semibold text-slate-300 capitalize">{item.type}</span>
-              <span className="text-slate-500">{new Date(item.timestamp).toLocaleTimeString()}</span>
+            <div className="flex justify-between items-start gap-2">
+              <span className="font-semibold text-slate-300 capitalize truncate">{item.type}</span>
+              <span className="text-slate-500 whitespace-nowrap flex-shrink-0 text-xs">
+                {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
             </div>
-            <p className="text-slate-400 mt-1 line-clamp-2">{item.title}</p>
+            <p className="text-slate-400 mt-1 line-clamp-1">{item.title}</p>
           </div>
         ))}
       </div>
