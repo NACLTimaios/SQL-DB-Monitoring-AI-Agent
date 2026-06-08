@@ -362,19 +362,12 @@ The monitored database contains the following tables:
 - `stock` (INTEGER) — Stock quantity
 - `created_at` (TIMESTAMP) — Record creation timestamp
 
-**orders** table:
-- `order_id` (PRIMARY KEY) — Order ID
+**orders** table (stores individual order line items):
+- `id` (PRIMARY KEY) — Order item ID
 - `customer_id` (FOREIGN KEY) — Links to customers table
-- `order_date` (DATE) — Order date
-- `status` (TEXT) — Order status
-- `created_at` (TIMESTAMP) — Record creation timestamp
-
-**order_items** table:
-- `item_id` (PRIMARY KEY) — Item ID
-- `order_id` (FOREIGN KEY) — Links to orders table
 - `product_id` (FOREIGN KEY) — Links to products table
-- `quantity` (INTEGER) — Item quantity
-- `price` (NUMERIC) — Item price
+- `quantity` (INTEGER) — Item quantity ordered
+- `total` (NUMERIC) — Total price for this line item
 - `created_at` (TIMESTAMP) — Record creation timestamp
 
 ### Chatbot Features
