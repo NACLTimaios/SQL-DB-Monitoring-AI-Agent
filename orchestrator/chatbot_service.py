@@ -259,6 +259,141 @@ class ChatbotService:
         self.tools = config.get("tools", list(AVAILABLE_TOOLS.keys()))
         self.guardrails = config.get("guardrails", DEFAULT_GUARDRAILS)
 
+    def _format_value(self, value, key: str = "") -> str:
+        """Format a single value intelligently based on type and context."""
+        if value is None:
+            return "N/A"
+        elif isinstance(value, bool):
+            return "Yes" if value else "No"
+        elif isinstance(value, float):
+            # Auto-detect percentage fields
+            if 'percent' in key.lower() or 'ratio' in key.lower() or (value >= 0 and value <= 1 and 'ratio' in key.lower()):
+                return f"{value:.1%}" if 0 <= value <= 1 else f"{value:.2f}"
+            return f"{value:.2f}"
+        elif isinstance(value, int):
+            return str(value)
+        elif isinstance(value, str):
+            return value
+        elif isinstance(value, (list, dict)):
+            return str(value)
+        return str(value)
+
+    def _format_record(self, record: dict, skip_fields: set = None) -> list:
+        """Format a single record as readable lines."""
+        if skip_fields is None:
+            skip_fields = {'id', 'created_at', 'updated_at', 'deleted_at'}
+
+        lines = []
+        # First, extract key identifying fields (name, title, email, etc.)
+        identity_keys = ['name', 'title', 'email', 'username', 'customer']
+        identity_values = []
+
+        for key in identity_keys:
+            if key in record:
+                identity_values.append(str(record[key]))
+                break
+
+        # Format remaining fields
+        for key, value in record.items():
+            if key.lower() not in skip_fields and not key.startswith('_'):
+                formatted_value = self._format_value(value, key)
+                if formatted_value and formatted_value != "N/A":
+                    # Format key name: snake_case or CamelCase → Title Case
+                    display_key = key.replace('_', ' ').title()
+                    lines.append(f"   {display_key}: {formatted_value}")
+
+        return identity_values, lines
+
+    def _format_json_data(self, data: any) -> str:
+        """Format JSON data as human-readable text. Works for all data types."""
+        import json
+
+        # Handle empty data
+        if data is None or (isinstance(data, (list, dict)) and not data):
+            return "No results found."
+
+        # Handle single scalar value
+        if isinstance(data, (int, float, bool, str)):
+            return self._format_value(data)
+
+        # Handle dictionary (single object/record)
+        if isinstance(data, dict):
+            # Special case: Check for aggregate function results
+            agg_funcs = ['count', 'avg', 'sum', 'max', 'min', 'total']
+            for func in agg_funcs:
+                if func in data and len(data) == 1:
+                    value = data[func]
+                    formatted = self._format_value(value)
+                    if func == 'count':
+                        return f"Found {formatted} result(s)."
+                    elif func == 'avg':
+                        return f"The average is {formatted}."
+                    elif func == 'sum':
+                        return f"The total is {formatted}."
+                    elif func == 'max':
+                        return f"The maximum is {formatted}."
+                    elif func == 'min':
+                        return f"The minimum is {formatted}."
+
+            # Check for write operation result
+            if 'rows_affected' in data:
+                rows = data['rows_affected']
+                if rows == 0:
+                    return "No rows were affected."
+                elif rows == 1:
+                    return "1 row was successfully modified."
+                else:
+                    return f"{rows} rows were successfully modified."
+
+            # Format as key-value pairs
+            lines = []
+            for key, value in data.items():
+                if not key.startswith('_'):
+                    formatted_value = self._format_value(value, key)
+                    if formatted_value != "N/A":
+                        display_key = key.replace('_', ' ').title()
+                        lines.append(f"{display_key}: {formatted_value}")
+
+            if lines:
+                return "\n".join(lines)
+
+            return json.dumps(data, indent=2)
+
+        # Handle list (multiple records)
+        if isinstance(data, list):
+            if not data:
+                return "No results found."
+
+            # Single record
+            if len(data) == 1:
+                record = data[0]
+                if isinstance(record, dict):
+                    identity, details = self._format_record(record)
+                    result = ""
+                    if identity:
+                        result += f"Record: {' - '.join(identity)}\n"
+                    result += "\n".join(details)
+                    return result if result.strip() else json.dumps(record, indent=2)
+                else:
+                    return str(record)
+
+            # Multiple records - format as numbered list
+            output_lines = []
+            for idx, record in enumerate(data, 1):
+                if isinstance(record, dict):
+                    identity, details = self._format_record(record)
+                    if identity:
+                        output_lines.append(f"{idx}. {' - '.join(identity)}")
+                    if details:
+                        output_lines.extend(details)
+                    output_lines.append("")  # Blank line between records
+                else:
+                    output_lines.append(f"{idx}. {record}")
+
+            return "\n".join(output_lines).strip()
+
+        return json.dumps(data, indent=2)
+
     def _clean_assistant_message(self, message: str) -> str:
         """Clean assistant message by formatting JSON results as natural language."""
         import re
@@ -267,133 +402,7 @@ class ChatbotService:
         # Remove [Executed tool_name] markers
         message = re.sub(r'\[Executed [^\]]+\]\n?', '', message)
 
-        # Extract and format all JSON objects and arrays
-        def format_json(json_str: str) -> str:
-            """Format JSON data as natural language."""
-            try:
-                data = json.loads(json_str)
-            except:
-                return json_str
-
-            # Handle dictionaries with nested metrics
-            if isinstance(data, dict):
-                # Check for write operation result (rows_affected)
-                if 'rows_affected' in data:
-                    rows = data['rows_affected']
-                    if rows == 0:
-                        return "No rows were affected."
-                    elif rows == 1:
-                        return "1 row was successfully modified."
-                    else:
-                        return f"{rows} rows were successfully modified."
-
-                # Check for metrics response (has connections, disk_usage, cache_hit_ratio)
-                if 'connections' in data and 'disk_usage' in data:
-                    lines = []
-
-                    # Format connections
-                    if isinstance(data.get('connections'), dict):
-                        conns = data['connections']
-                        lines.append(f"Connections: {conns.get('active', 0)} active / {conns.get('max_connections', 0)} max ({conns.get('percent', 0):.1f}%)")
-
-                    # Format disk usage
-                    if isinstance(data.get('disk_usage'), dict):
-                        disk = data['disk_usage']
-                        lines.append(f"Disk: {disk.get('size_gb', 0):.2f} GB used")
-
-                    # Format cache hit ratio
-                    if isinstance(data.get('cache_hit_ratio'), dict):
-                        cache = data['cache_hit_ratio']
-                        lines.append(f"Cache Hit Ratio: Heap {cache.get('heap_hit_ratio', 0):.1%}, Index {cache.get('index_hit_ratio', 0):.1%}")
-
-                    return " | ".join(lines)
-
-                # Check for locks response
-                if 'waiting_sessions' in data or 'blocking_chains' in data:
-                    lines = []
-
-                    waiting = data.get('waiting_sessions', [])
-                    blocking = data.get('blocking_chains', [])
-
-                    if waiting:
-                        lines.append(f"{len(waiting)} waiting session(s)")
-                    if blocking:
-                        lines.append(f"{len(blocking)} blocking chain(s)")
-
-                    if not lines:
-                        lines.append("No locks detected")
-
-                    return " | ".join(lines)
-
-                # Generic nested object - format as key-value pairs
-                if data:
-                    pairs = []
-                    for key, value in data.items():
-                        if key not in ['created_at', 'updated_at']:
-                            if isinstance(value, dict):
-                                # For nested dicts, show count or first few items
-                                if value:
-                                    pairs.append(f"{key}: {len(value)} items" if isinstance(value, dict) else f"{key}: {value}")
-                            elif isinstance(value, (int, float)):
-                                if isinstance(value, float):
-                                    pairs.append(f"{key}: {value:.2f}")
-                                else:
-                                    pairs.append(f"{key}: {value}")
-                            elif value:
-                                pairs.append(f"{key}: {value}")
-
-                    if pairs:
-                        return " | ".join(pairs)
-
-                return json_str
-
-            # Handle lists
-            if isinstance(data, list):
-                if not data:
-                    return "No results found."
-
-                # Single row with aggregate functions
-                if len(data) == 1:
-                    row = data[0]
-                    if isinstance(row, dict):
-                        if 'count' in row:
-                            return f"The result is: {row['count']}."
-                        elif 'avg' in row:
-                            return f"The average is: {row['avg']:.2f}." if isinstance(row['avg'], float) else f"The average is: {row['avg']}."
-                        elif 'sum' in row:
-                            return f"The total is: {row['sum']}." if isinstance(row['sum'], (int, float)) else f"The total is: {row['sum']}."
-                        elif 'max' in row:
-                            return f"The maximum is: {row['max']}."
-                        elif 'min' in row:
-                            return f"The minimum is: {row['min']}."
-
-                # Multiple rows - format as list
-                if len(data) > 1:
-                    summary_lines = []
-                    for i, row in enumerate(data, 1):
-                        if isinstance(row, dict):
-                            # Format each row nicely
-                            parts = []
-                            for key, value in row.items():
-                                if key not in ['created_at', 'updated_at', 'id']:
-                                    if isinstance(value, float):
-                                        parts.append(f"{key}: {value:.2f}")
-                                    else:
-                                        parts.append(f"{key}: {value}")
-                            if parts:
-                                summary_lines.append(f"{i}. " + " | ".join(parts))
-                        else:
-                            summary_lines.append(f"{i}. {row}")
-
-                    if summary_lines:
-                        return "\n" + "\n".join(summary_lines)
-
-                return json_str
-
-            return json_str
-
-        # Pattern to match JSON objects and arrays at various nesting levels
-        # This tries to find balanced braces and brackets
+        # Find and replace all JSON blocks
         def find_json_blocks(text):
             """Find all JSON blocks (objects and arrays) in text."""
             blocks = []
@@ -434,8 +443,13 @@ class ChatbotService:
         json_blocks = find_json_blocks(message)
         for start, end in reversed(json_blocks):  # Reverse to maintain indices
             json_text = message[start:end]
-            formatted = format_json(json_text)
-            message = message[:start] + formatted + message[end:]
+            try:
+                data = json.loads(json_text)
+                formatted = self._format_json_data(data)
+                message = message[:start] + formatted + message[end:]
+            except json.JSONDecodeError:
+                # Not valid JSON, leave as is
+                pass
 
         # Clean up multiple newlines
         message = re.sub(r'\n\n+', '\n', message)
@@ -484,7 +498,7 @@ class ChatbotService:
 
                     result = _execute_query_database(self.db_config, {"query": query, "limit": limit}, self.guardrails)
 
-                    # Parse and format as human-readable
+                    # Parse and format using generic formatter
                     try:
                         data = json.loads(result)
 
@@ -497,13 +511,10 @@ class ChatbotService:
                                 "error": None,
                             }
 
-                        lines = [f"Here is the credit card information for {result_text}:\n"]
-                        for idx, row in enumerate(data, 1):
-                            lines.append(f"{idx}. {row.get('name', 'N/A')} (ID: {row.get('id', 'N/A')})")
-                            lines.append(f"   Email: {row.get('email', 'N/A')}")
-                            lines.append(f"   Credit Card: {row.get('credit_card_number', 'N/A')}")
-                            lines.append("")
-                        formatted_message = "\n".join(lines)
+                        # Use generic formatter for consistency
+                        formatted_data = self._format_json_data(data)
+                        formatted_message = f"Here is the credit card information for {result_text}:\n\n{formatted_data}"
+
                     except Exception as parse_err:
                         logger.warning("Failed to parse credit card query result: %s", parse_err)
                         formatted_message = f"Here is the credit card information for {result_text}:\n\n{result}"
