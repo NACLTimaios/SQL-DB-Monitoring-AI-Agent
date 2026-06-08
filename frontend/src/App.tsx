@@ -109,7 +109,7 @@ function AppRoutes({
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState<boolean>(() => !!localStorage.getItem('token'));
+  const [authenticated, setAuthenticated] = useState<boolean>(() => !!localStorage.getItem('access_token'));
   const [healthData, setHealthData] = useState<HealthResponse | null>(null);
   const [agentStatus, setAgentStatus] = useState<AgentStatusResponse | null>(null);
   const [dbSummary, setDbSummary] = useState<DatabaseSummaryResponse | null>(null);

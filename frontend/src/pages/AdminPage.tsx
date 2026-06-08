@@ -49,7 +49,7 @@ export default function AdminPage() {
   const loadConfig = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const headers = { Authorization: `Bearer ${token}` };
       const [configRes, toolsRes] = await Promise.all([
         axios.get('/api/chatbot/config', { headers }),
@@ -72,7 +72,7 @@ export default function AdminPage() {
 
   const loadModelsForProvider = async (provider: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await axios.get(`/api/chatbot/models?provider=${provider}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -88,7 +88,7 @@ export default function AdminPage() {
 
     try {
       setSaving(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       await axios.post('/api/chatbot/config', config, {
         headers: { Authorization: `Bearer ${token}` },
       });
