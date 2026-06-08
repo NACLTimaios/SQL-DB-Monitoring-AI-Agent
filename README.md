@@ -21,10 +21,15 @@ A domain-focused SQL database monitoring agent with multi-provider LLM chatbot i
 ### Frontend Dashboard (arm2)
 - **React 18 + TypeScript** with Tailwind CSS dark theme
 - **Real-time chat interface** for database queries
-- **Admin configuration page** for provider/model switching
+- **Admin Settings page** (admin-only access):
+  - Chatbot provider and model configuration
+  - User management (create, edit, delete users)
+  - Role-based access control
 - **JWT authentication** with 24-hour token expiry
+- **Persistent user management** with password hashing (Argon2)
 - **Live status monitoring** and insights display
 - **Activity feed** and timeline visualization
+- **Role-based UI** - Non-admin users see access denied message with instructions
 
 ## ⚠️ Lab Setup / Security Notice
 
@@ -42,7 +47,7 @@ A domain-focused SQL database monitoring agent with multi-provider LLM chatbot i
 ### Before Production Deployment
 You MUST:
 1. ⚠️ Replace hardcoded credentials with a proper identity provider (LDAP, OAuth2, OpenID Connect)
-2. ✅ Use bcrypt, Argon2, or similar for password hashing
+2. ✅ Use bcrypt, Argon2, or similar for password hashing (IMPLEMENTED: Argon2)
 3. ⚠️ Move API keys to a secrets management system (HashiCorp Vault, AWS Secrets Manager, etc.)
 4. ❌ Implement comprehensive request rate limiting
 5. ❌ Add token refresh and rotation mechanisms
@@ -51,8 +56,9 @@ You MUST:
 8. ❌ Implement proper CORS and CSRF protection
 9. ❌ Add extensive input validation and sanitization
 10. ✅ Use TLS/HTTPS for all traffic
-11. ✅ Implement role-based access control (RBAC)
-12. ❌ Regular security audits and penetration testing
+11. ✅ Implement role-based access control (RBAC) (IMPLEMENTED: admin/dashboard roles)
+12. ✅ Persistent user authentication (IMPLEMENTED: PostgreSQL-backed)
+13. ❌ Regular security audits and penetration testing
 
 ### Current Status
 - ✅ Functional for laboratory/development testing
@@ -144,6 +150,22 @@ curl -X POST http://localhost:8084/api/chatbot/chat \
   -d '{"message":"How many customers in the database?"}'
 ```
 
+### 4. Access Admin Settings
+
+1. Log in to dashboard at `https://sqlagent.dittmar.it`
+2. Click "Admin Settings" button (top right)
+3. **Chatbot Settings tab:**
+   - Switch between LLM providers (Anthropic, Google, OpenAI)
+   - Change model and system prompt
+   - Configure safety guardrails
+4. **User Management tab:**
+   - View all users and their roles
+   - Create new users
+   - Update user passwords and roles
+   - Delete users
+
+**Note:** Only users with the "admin" role can access Admin Settings. Non-admin users will see a helpful access denied message.
+
 ## Configuration
 
 ### config.yaml
@@ -169,8 +191,8 @@ api: {host: 0.0.0.0, port: 8084}
 The system uses database-backed user authentication with role-based access control (RBAC):
 
 **Default Roles:**
-- **admin** — Full access to dashboard and admin configuration page
-- **dashboard** — View dashboard only
+- **admin** — Full access to dashboard and Admin Settings page
+- **dashboard** — View dashboard only (cannot access Admin Settings)
 
 **Default User:**
 - Username: `admin`
@@ -182,10 +204,28 @@ The system uses database-backed user authentication with role-based access contr
 - User passwords are never stored in plain text
 
 **User Lifecycle:**
-1. Default admin user created on first server startup
-2. Default roles and permissions initialized
+1. Default admin user created on first server startup (only if no users exist)
+2. Default roles and permissions initialized automatically
 3. Users can authenticate with username/password
 4. JWT tokens expire after 24 hours
+5. **User data persists across service restarts** (stored in PostgreSQL)
+
+**User Management Features:**
+- ✅ Create new users from Admin Settings page
+- ✅ Edit user passwords and roles from Admin Settings
+- ✅ Delete users from Admin Settings
+- ✅ Persistent user credentials across restarts
+- ✅ Non-admin users see helpful access denied message when trying to access admin features
+- ✅ Admin users can manage other users' permissions
+
+**Creating New Users:**
+1. Log in as admin user
+2. Click "Admin Settings" 
+3. Go to "User Management" tab
+4. Click "Create User" tab
+5. Enter username, password, and select role
+6. Click "Create User" button
+7. New user can immediately log in with credentials
 
 ### Environment Variables (.env)
 
@@ -207,14 +247,40 @@ SECRET_KEY=your-secret-key-here
 
 ## API Endpoints
 
-### Authentication
+### Authentication & User Management
 - `POST /api/login` — Get JWT token
   ```bash
   curl -X POST http://localhost:8084/api/login \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"changeme"}'
   ```
-  **Note:** Default admin user is created on first startup. Change the password immediately in production.
+  **Note:** Default admin user is created on first startup (only if no users exist). Change the password immediately in production.
+
+- `GET /api/me` — Get current authenticated user's info (includes roles)
+  ```bash
+  curl -X GET http://localhost:8084/api/me \
+    -H "Authorization: Bearer <token>"
+  ```
+
+- `POST /api/change-password` — Change user's password
+  ```bash
+  curl -X POST http://localhost:8084/api/change-password \
+    -H "Authorization: Bearer <token>" \
+    -H "Content-Type: application/json" \
+    -d '{"current_password":"old","new_password":"new"}'
+  ```
+
+**User Management (admin-only):**
+- `GET /api/users` — List all users (requires admin role)
+- `POST /api/users` — Create new user (requires admin role)
+  ```bash
+  curl -X POST http://localhost:8084/api/users \
+    -H "Authorization: Bearer <token>" \
+    -H "Content-Type: application/json" \
+    -d '{"username":"newuser","password":"password","role":"dashboard"}'
+  ```
+- `PUT /api/users/{user_id}` — Update user (password, role, status) (requires admin role)
+- `DELETE /api/users/{user_id}` — Delete user (requires admin role)
 
 ### Health
 - `GET /api/health` — System health check (no auth)
@@ -233,10 +299,12 @@ SECRET_KEY=your-secret-key-here
 - `GET /api/chatbot/tools` — List available database tools
 - `GET /api/chatbot/guardrails` — Safety constraints
 
+**Authorization:**
 All endpoints except `/api/login` and `/api/health` require JWT bearer token:
 ```bash
 -H "Authorization: Bearer <token>"
 ```
+Tokens are obtained from `/api/login` and expire after 24 hours.
 
 ## Chatbot Features
 
@@ -268,14 +336,50 @@ Chatbot: [Executes check_locks tool]
 Response: [Shows blocking chains and waiting sessions]
 ```
 
-## Switching LLM Providers
+## Admin Settings
 
-### Via Admin Page (Easiest)
+The Admin Settings page provides administrative control over the system. **Only users with the "admin" role can access this page.**
+
+### What Non-Admin Users See
+When a non-admin user tries to access Admin Settings:
+- 🔒 Access Denied message
+- Clear explanation of their current role
+- Instructions to contact the administrator
+- Steps for requesting admin access
+
+### Admin Features
+
+#### Chatbot Settings
+Switch LLM providers and configure model behavior:
+- **Select Provider:** Anthropic, Google Gemini, or OpenAI
+- **Choose Model:** Available models depend on provider
+- **System Prompt:** Custom instructions for the chatbot
+- **Safety Guardrails:**
+  - Enable/disable write operations (INSERT/UPDATE/DELETE)
+  - Control DDL operations (CREATE/ALTER/DROP)
+  - Set query timeout (1-60 seconds)
+  - Set maximum rows returned (100-10000)
+
+#### User Management
+Create, edit, and delete users:
+- **Create User:** Add new users with username, password, and role
+- **Edit User:** Change passwords, roles, and enable/disable accounts
+- **Delete User:** Remove users from the system
+- **View Users:** See all users and their roles
+
+Users can be assigned two roles:
+- **admin** — Full access to dashboard and Admin Settings
+- **dashboard** — View dashboard only
+
+### Switching LLM Providers
+
+#### Via Admin Page (Easiest)
 1. Login to dashboard
 2. Click "Admin Settings"
-3. Select provider from dropdown
-4. Change model name if desired
-5. Click "Save Configuration"
+3. Click "Chatbot Settings" tab
+4. Select provider from dropdown
+5. Change model name if desired
+6. Click "Save Configuration"
 
 ### Via API
 ```bash
@@ -340,10 +444,10 @@ sql_agent/
 │   ├── registry.py            # Tool discovery and loading
 │   └── {domain}_tools.py       # Domain-specific tools
 ├── store/
-│   ├── models.py              # SQLAlchemy ORM models
-│   ├── chatbot_models.py       # Chatbot config and chat history
-│   ├── user_models.py          # User, Role, Permission, UserProfile models
-│   └── repository.py          # Data access layer
+│   ├── models.py              # SQLAlchemy ORM models (Observation, Analysis, Insight, ActionQueue)
+│   ├── chatbot_models.py       # Chatbot config and chat history models
+│   ├── user_models.py          # User, Role, Permission, UserProfile models with Argon2 hashing
+│   └── repository.py          # Data access layer for observations and insights
 ├── api/
 │   ├── auth.py                # Authentication and user management
 │   └── server.py              # FastAPI endpoints
@@ -411,26 +515,47 @@ Expected: 5 integration tests passing (uses in-memory SQLite)
 - Verify API key is set on backend
 - Check backend logs for errors: `tail /tmp/api.log`
 
+## Recent Improvements
+
+### User Management System (June 2026)
+- ✅ **Persistent user credentials** - Users created in the system persist across service restarts
+- ✅ **User CRUD operations** - Create, read, update, delete users via API and admin page
+- ✅ **Admin-only access control** - Admin Settings page restricted to admin-role users
+- ✅ **Role-based UI** - Non-admin users see helpful access denied message instead of broken features
+- ✅ **Token management** - Standardized token key handling across all frontend components
+
+### User Management API Endpoints
+```
+GET  /api/me                    # Get current user info (with roles)
+POST /api/users                 # Create new user (admin-only)
+GET  /api/users                 # List all users (admin-only)
+PUT  /api/users/{user_id}       # Update user (admin-only)
+DELETE /api/users/{user_id}     # Delete user (admin-only)
+```
+
 ## Security Notes
 
 ✅ **Protected:**
 - API keys in `.env` (gitignored, permissions 600)
 - JWT tokens with 24-hour expiry
-- Database-backed user authentication
-- Passwords hashed with Argon2
-- Role-based access control (RBAC)
+- Database-backed user authentication with persistent storage
+- Passwords hashed with Argon2 (irreversible)
+- Role-based access control (RBAC) with admin-only features
 - Database queries limited to SELECT-only by default
 - SQL injection protection through parameterized queries
+- Admin Settings page restricted to admin users only
+- User data stored securely in PostgreSQL
 
 ⚠️ **Consider for Production:**
 - Encrypt API keys at rest
 - Use stronger authentication (LDAP, OAuth, OpenID Connect)
 - Enable HTTPS/TLS for all traffic
 - Implement request rate limiting
-- Add audit logging for configuration changes
+- Add audit logging for configuration changes and user management
 - Restrict database user to read-only access
 - Implement token refresh and rotation
 - Set up comprehensive API access logging
+- Regularly audit user access and permissions
 
 ## Performance Notes
 
