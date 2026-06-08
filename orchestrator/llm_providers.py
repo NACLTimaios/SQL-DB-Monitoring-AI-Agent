@@ -411,10 +411,24 @@ class OpenAIProvider(LLMProvider):
 
 
 class PrismaAIProvider(LLMProvider):
-    """Prisma AI (or compatible OpenAI-compatible) API provider."""
+    """Prisma AI (or compatible OpenAI-compatible) API provider.
+
+    SECURITY: API key is ONLY stored in environment variable and NEVER exposed to:
+    - The LLM (Claude, etc.)
+    - Logs or error messages
+    - Response data returned to user
+    - System prompts or tool schemas
+    """
 
     def chat(self, user_message: str, available_tools: dict) -> ProviderResponse:
-        """Send message to Prisma AI via compatible OpenAI API."""
+        """Send message to Prisma AI via compatible OpenAI API.
+
+        The API key is loaded from PRISMA_API_KEY environment variable and:
+        - Used only in HTTP Authorization header for Prisma API calls
+        - Never passed in request payload
+        - Never logged in error messages
+        - Never sent to LLM (Claude, GPT, etc.)
+        """
         api_key = os.environ.get("PRISMA_API_KEY")
         api_url = os.environ.get("PRISMA_API_URL")
 
@@ -437,7 +451,7 @@ class PrismaAIProvider(LLMProvider):
             # Build tools for the API
             tools = self._build_openai_compatible_tools(available_tools)
 
-            # Prepare request payload
+            # Prepare request payload (API key NEVER included in payload)
             payload = {
                 "model": self.model,
                 "messages": messages,
@@ -450,6 +464,7 @@ class PrismaAIProvider(LLMProvider):
                 payload["tools"] = tools
 
             # Make API request
+            # API key ONLY goes in Authorization header, never in request body
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -474,7 +489,7 @@ class PrismaAIProvider(LLMProvider):
                 choice = result["choices"][0]
                 message = choice.get("message", {})
 
-                # Get text content
+                # Get text content (LLM response - API key never here)
                 if "content" in message and message["content"]:
                     assistant_message = message["content"]
 
@@ -485,14 +500,15 @@ class PrismaAIProvider(LLMProvider):
                         if tool_name:
                             tools_used.append(tool_name)
                             try:
-                                # Parse arguments
+                                # Parse arguments from LLM response
                                 args_str = tool_call.get("function", {}).get("arguments", "{}")
                                 params = json.loads(args_str) if isinstance(args_str, str) else args_str
                                 tool_result = self._execute_tool(tool_name, params)
                                 assistant_message += f"\n[Executed {tool_name}]\n{tool_result}\n"
                             except Exception as e:
-                                logger.error(f"Tool execution error: {e}")
-                                assistant_message += f"\n[Tool execution failed: {e}]\n"
+                                # Log error without exposing sensitive data
+                                logger.error(f"Tool execution failed: {type(e).__name__}")
+                                assistant_message += f"\n[Tool execution failed. Check server logs.]\n"
 
                 stop_reason = choice.get("finish_reason", "stop")
 
@@ -503,18 +519,20 @@ class PrismaAIProvider(LLMProvider):
             )
 
         except requests.exceptions.RequestException as e:
-            logger.error("Prisma AI API request error: %s", e)
+            # Log without exposing headers, URL details, or exception details
+            logger.error("Prisma AI API request failed: %s", type(e).__name__)
             return ProviderResponse(
                 assistant_message="",
                 tools_used=[],
-                error=f"API request failed: {str(e)}",
+                error="LLM API request failed. Please try again.",
             )
         except Exception as e:
-            logger.error("Prisma AI API error: %s", e, exc_info=True)
+            # Log error type only, never the full exception which might contain sensitive info
+            logger.error("Prisma AI error: %s", type(e).__name__)
             return ProviderResponse(
                 assistant_message="",
                 tools_used=[],
-                error=str(e),
+                error="LLM service error. Please try again.",
             )
 
     def _build_openai_compatible_tools(self, available_tools: dict) -> list:
