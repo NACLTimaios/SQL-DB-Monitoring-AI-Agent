@@ -265,7 +265,7 @@ export default function DashboardGrid({
               <ChatBot />
             </div>
             {/* Info Box - Takes 30% of space */}
-            <div className="w-80 flex-shrink-0">
+            <div className="w-56 flex-shrink-0">
               <ChatbotInfoBox />
             </div>
           </div>
