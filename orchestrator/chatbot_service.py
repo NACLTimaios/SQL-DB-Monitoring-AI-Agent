@@ -129,8 +129,9 @@ DEFAULT_GUARDRAILS = {
 
 # Tool executors - shared across all LLM providers
 def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> str:
-    """Execute a database query safely."""
+    """Execute a database query safely with parameterized queries."""
     query = params.get("query", "")
+    query_params = params.get("params", ())  # Parameters for parameterized queries
     limit = int(params.get("limit", 100))
 
     # Guardrails checks
@@ -166,7 +167,8 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
         if not is_write_op and 'LIMIT' not in query_clean.upper():
             query_clean = f"{query_clean} LIMIT {min(limit, guardrails.get('max_rows_return', 1000))}"
 
-        cursor.execute(query_clean)
+        # Execute with parameterized query to prevent SQL injection
+        cursor.execute(query_clean, query_params)
 
         # Handle write operations (no result set, just row count)
         if is_write_op:
@@ -514,20 +516,24 @@ class ChatbotService:
                     customer_match = re.search(r'(?:customer|for)\s+([a-zA-Z0-9]+(?:\s+[a-zA-Z0-9]+)*?)(?:\s*[?!]?$|\s+(?:id|email|card|number|with|info|have|has|is|does))', user_message, re.IGNORECASE)
 
                     customer_name = None
+                    query_params = ()
                     if customer_match:
                         # Specific customer requested
                         customer_name = customer_match.group(1).strip().rstrip('?').strip()
                         # If we matched "for" and got something like "for customer X", clean it up
                         if 'customer' in customer_name.lower():
                             customer_name = customer_name.split()[-1]
-                        query = f"SELECT id, name, email, credit_card_number FROM customers WHERE LOWER(name) LIKE LOWER('%{customer_name}%') LIMIT {limit}"
+                        # Use parameterized query to prevent SQL injection
+                        query = "SELECT id, name, email, credit_card_number FROM customers WHERE LOWER(name) LIKE LOWER(%s) LIMIT %s"
+                        query_params = (f"%{customer_name}%", limit)
                         result_text = f"customer {customer_name}"
                     else:
                         # Generic request - return top N
-                        query = f"SELECT id, name, email, credit_card_number FROM customers LIMIT {limit}"
+                        query = "SELECT id, name, email, credit_card_number FROM customers LIMIT %s"
+                        query_params = (limit,)
                         result_text = f"first {limit} customers"
 
-                    result = _execute_query_database(self.db_config, {"query": query, "limit": limit}, self.guardrails)
+                    result = _execute_query_database(self.db_config, {"query": query, "params": query_params, "limit": limit}, self.guardrails)
 
                     # Parse and format using generic formatter
                     try:
