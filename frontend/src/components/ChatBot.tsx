@@ -86,11 +86,20 @@ export default function ChatBot() {
     }
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
     if (messages.length === 0) return;
     if (window.confirm('Are you sure you want to clear the chat history? This cannot be undone.')) {
-      setMessages([]);
-      setError(null);
+      try {
+        const token = localStorage.getItem('access_token');
+        await axios.delete('/api/chatbot/history', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setMessages([]);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to clear chat history:', err);
+        setError('Failed to clear chat history');
+      }
     }
   };
 

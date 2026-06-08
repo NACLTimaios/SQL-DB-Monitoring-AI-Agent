@@ -872,6 +872,24 @@ def get_chat_history(limit: int = 50, _: str = Depends(verify_token)):
         session.close()
 
 
+@app.delete("/api/chatbot/history")
+def clear_chat_history(_: str = Depends(verify_token)):
+    """Clear all chat message history."""
+    from store.chatbot_models import ChatMessage as ChatMessageModel
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        return {"message": "Chat history cleared"}
+
+    session = session_factory()
+    try:
+        session.query(ChatMessageModel).delete()
+        session.commit()
+        return {"message": "Chat history cleared"}
+    finally:
+        session.close()
+
+
 @app.get("/api/chatbot/tools")
 def get_available_tools(_: str = Depends(verify_token)):
     """Get list of available chatbot tools."""
