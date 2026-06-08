@@ -154,6 +154,38 @@ def login(request: LoginRequest) -> Token:
     return Token(access_token=access_token, token_type="bearer")
 
 
+@app.get("/api/me")
+def get_current_user_info(username: str = Depends(verify_token)):
+    """Get current authenticated user's information."""
+    from store.user_models import User
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(
+            status_code=500,
+            detail="Database not initialized",
+        )
+
+    session = session_factory()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            enabled=user.enabled,
+            roles=[r.name for r in user.roles],
+            created_at=user.created_at.isoformat() if user.created_at else None,
+        )
+    finally:
+        session.close()
+
+
 @app.post("/api/change-password")
 def change_password(request: ChangePasswordRequest, username: str = Depends(verify_token)):
     """Change user's password."""
