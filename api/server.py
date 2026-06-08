@@ -1,6 +1,7 @@
 """FastAPI server: exposes the monitoring agent's HTTP API on port 8080."""
 
 import logging
+import os
 import signal
 import threading
 from contextlib import asynccontextmanager
@@ -10,12 +11,27 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 
 from api.auth import LoginRequest, Token, ChangePasswordRequest, authenticate_user, create_access_token, verify_token, change_user_password, get_current_user, verify_token_payload
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
 
 # ---------------------------------------------------------------------------
 # Shared state (populated at startup)
@@ -74,12 +90,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Secure CORS configuration - restrict to specific origins
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+cors_origins = [origin.strip() for origin in cors_origins]
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(","),
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "PUT"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ---------------------------------------------------------------------------

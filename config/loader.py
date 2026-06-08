@@ -1,6 +1,8 @@
 """ConfigLoader: loads and validates the agent YAML configuration file."""
 
 import logging
+import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -65,9 +67,42 @@ class ConfigLoader:
         if not isinstance(raw, dict):
             raise ValueError(f"Config file must be a YAML mapping, got {type(raw).__name__}")
 
+        # Resolve environment variables in configuration
+        raw = self._resolve_env_vars(raw)
+
         self._validate(raw)
         logger.info("Configuration loaded from %s", config_path)
         return raw
+
+    def _resolve_env_vars(self, config: Any) -> Any:
+        """Recursively resolve ${VAR_NAME} patterns with environment variables.
+
+        Supports format: ${VAR_NAME} or ${VAR_NAME:default_value}
+        """
+        if isinstance(config, dict):
+            return {k: self._resolve_env_vars(v) for k, v in config.items()}
+        elif isinstance(config, list):
+            return [self._resolve_env_vars(item) for item in config]
+        elif isinstance(config, str):
+            # Replace ${VAR_NAME} with environment variable value
+            def replace_env(match):
+                var_spec = match.group(1)
+                if ':' in var_spec:
+                    var_name, default = var_spec.split(':', 1)
+                    return os.environ.get(var_name.strip(), default.strip())
+                else:
+                    var_name = var_spec.strip()
+                    value = os.environ.get(var_name)
+                    if value is None:
+                        raise ValueError(
+                            f"Environment variable '{var_name}' is required but not set. "
+                            f"Set it before starting the application: export {var_name}=<value>"
+                        )
+                    return value
+
+            return re.sub(r'\$\{([^}]+)\}', replace_env, config)
+        else:
+            return config
 
     # ------------------------------------------------------------------
     # Validation helpers

@@ -2,6 +2,7 @@
 
 import os
 import logging
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -14,9 +15,13 @@ import jwt
 logger = logging.getLogger(__name__)
 
 # Configuration
-SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production-please-use-env")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    logger.critical("❌ FATAL: SECRET_KEY environment variable is not set. Cannot start API.")
+    raise RuntimeError("SECRET_KEY environment variable is required for JWT authentication. Set it before starting the application.")
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Reduced from 24 hours to 30 minutes for better security
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -208,14 +213,29 @@ def bootstrap_default_user(session) -> None:
         if user_count > 0:
             return
 
+        # Generate secure random password
+        secure_password = secrets.token_urlsafe(32)
+
         # Create admin user
         admin_user = User(username="admin")
-        admin_user.set_password("changeme")  # MUST be changed on first login!
+        admin_user.set_password(secure_password)
         admin_role = session.query(Role).filter(Role.name == "admin").first()
         if admin_role:
             admin_user.roles.append(admin_role)
         session.add(admin_user)
         session.commit()
-        logger.warning("⚠️ Default admin user created with username='admin' and password='changeme'. CHANGE THIS IMMEDIATELY!")
+
+        # Output to stderr with clear instructions
+        import sys
+        print("\n" + "="*80, file=sys.stderr)
+        print("⚠️  IMPORTANT: Initial admin user created", file=sys.stderr)
+        print("="*80, file=sys.stderr)
+        print(f"Username: admin", file=sys.stderr)
+        print(f"Password: {secure_password}", file=sys.stderr)
+        print("\nSave this password in a secure location.", file=sys.stderr)
+        print("You will NOT see this password again.", file=sys.stderr)
+        print("="*80 + "\n", file=sys.stderr)
+
+        logger.critical(f"Default admin user created. Temporary password output to stderr.")
     except Exception as e:
         logger.error(f"Error creating default user: {e}")
