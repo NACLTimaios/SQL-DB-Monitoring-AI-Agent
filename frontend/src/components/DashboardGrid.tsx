@@ -10,6 +10,7 @@ import InsightsAlerts from './widgets/InsightsAlerts';
 import ActivityFeed from './widgets/ActivityFeed';
 import PerformanceMetrics from './widgets/PerformanceMetrics';
 import ChatBot from './ChatBot';
+import ChatbotInfoBox from './ChatbotInfoBox';
 
 interface DashboardGridProps {
   healthData: any;
@@ -255,11 +256,18 @@ export default function DashboardGrid({
         </div>
       )}
 
-      {/* Chatbot Tab - Full Width */}
+      {/* Chatbot Tab - With Info Box */}
       {activeTab === 'chatbot' && (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="p-6 flex flex-col flex-1 min-h-0">
-            <ChatBot />
+          <div className="p-6 flex gap-6 flex-1 min-h-0">
+            {/* Chatbot - Takes 70% of space */}
+            <div className="flex-1 min-w-0">
+              <ChatBot />
+            </div>
+            {/* Info Box - Takes 30% of space */}
+            <div className="w-80 flex-shrink-0">
+              <ChatbotInfoBox />
+            </div>
           </div>
         </div>
       )}
