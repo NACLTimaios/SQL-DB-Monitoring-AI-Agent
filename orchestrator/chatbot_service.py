@@ -20,6 +20,18 @@ The database contains the following tables:
 - **orders**: order_id (PRIMARY KEY), customer_id (FOREIGN KEY), order_date, status, created_at
 - **order_items**: item_id (PRIMARY KEY), order_id (FOREIGN KEY), product_id (FOREIGN KEY), quantity, price, created_at
 
+## Query Performance Tools (Aggregate Statistics)
+IMPORTANT: These tools provide AGGREGATE statistics since server startup, not time-based history:
+- **get_slow_queries**: Top slow queries by mean execution time (aggregate stats, not per-hour)
+- **get_table_stats**: Table sizes and row counts (point-in-time snapshot)
+- **check_locks**: Current active locks and blocking sessions (real-time)
+- **get_metrics**: Current connections, disk usage, cache hit ratio (real-time)
+
+For questions about "past hour", "last N minutes", or "since startup", explain that:
+- If asking about aggregate statistics since server startup (calls, total time): Use get_slow_queries
+- If asking about current/real-time state: Use get_metrics, check_locks, or get_table_stats
+- If asking about historical time-series data not available in pg_stat_statements: Clarify what can be measured
+
 ## Supported Operations
 - **SELECT queries**: Always available for data analysis and reporting
 - **INSERT/UPDATE/DELETE**: Available if enabled by administrators via guardrails
