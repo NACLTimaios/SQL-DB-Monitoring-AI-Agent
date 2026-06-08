@@ -3,7 +3,7 @@ import axios from 'axios';
 const API_BASE = '/api';
 
 const getAuthHeader = () => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token');
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   console.log('Auth header:', headers ? 'Token present' : 'No token');
   return headers;
@@ -78,6 +78,6 @@ export async function fetchActivity(limit: number) {
 }
 
 export function logout() {
-  localStorage.removeItem('token');
+  localStorage.removeItem('access_token');
   window.location.href = '/';
 }

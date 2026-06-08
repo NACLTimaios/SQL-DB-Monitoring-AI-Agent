@@ -26,7 +26,7 @@ export default function ChatBot() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         const response = await axios.get('/api/chatbot/history?limit=50', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -50,7 +50,7 @@ export default function ChatBot() {
     setError(null);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await axios.post(
         '/api/chatbot/chat',
         { message: userMessage },

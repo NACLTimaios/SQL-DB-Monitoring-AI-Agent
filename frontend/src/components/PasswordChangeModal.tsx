@@ -33,7 +33,7 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
 
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       await axios.post(
         '/api/change-password',
         {

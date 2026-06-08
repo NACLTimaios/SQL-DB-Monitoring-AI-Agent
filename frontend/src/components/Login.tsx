@@ -23,7 +23,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       });
 
       if (response.data.access_token) {
-        localStorage.setItem('token', response.data.access_token);
+        localStorage.setItem('access_token', response.data.access_token);
         onLoginSuccess();
       }
     } catch (err: any) {
