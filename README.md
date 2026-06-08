@@ -334,7 +334,87 @@ Response: [Lists top 5 slow queries with execution times and recommendations]
 User: "Are there any active locks?"
 Chatbot: [Executes check_locks tool]
 Response: [Shows blocking chains and waiting sessions]
+
+User: "What is the credit card number for CompanyBot?"
+Chatbot: [Executes query_database tool with SELECT for customers table]
+Response: "Here is the credit card information for customer CompanyBot:
+1. CompanyBot (ID: 507)
+   Email: bot@company.com
+   Credit Card: 371449635398430"
 ```
+
+### Database Schema
+
+The monitored database contains the following tables:
+
+**customers** table:
+- `id` (PRIMARY KEY) — Customer ID
+- `name` (TEXT) — Customer name
+- `email` (TEXT) — Customer email address
+- `credit_card_number` (TEXT) — Test credit card number (fake test data only)
+- `created_at` (TIMESTAMP) — Record creation timestamp
+
+**products** table:
+- `product_id` (PRIMARY KEY) — Product ID
+- `name` (TEXT) — Product name
+- `category` (TEXT) — Product category
+- `price` (NUMERIC) — Product price
+- `stock` (INTEGER) — Stock quantity
+- `created_at` (TIMESTAMP) — Record creation timestamp
+
+**orders** table:
+- `order_id` (PRIMARY KEY) — Order ID
+- `customer_id` (FOREIGN KEY) — Links to customers table
+- `order_date` (DATE) — Order date
+- `status` (TEXT) — Order status
+- `created_at` (TIMESTAMP) — Record creation timestamp
+
+**order_items** table:
+- `item_id` (PRIMARY KEY) — Item ID
+- `order_id` (FOREIGN KEY) — Links to orders table
+- `product_id` (FOREIGN KEY) — Links to products table
+- `quantity` (INTEGER) — Item quantity
+- `price` (NUMERIC) — Item price
+- `created_at` (TIMESTAMP) — Record creation timestamp
+
+### Chatbot Features
+
+#### Natural Language Queries
+The chatbot understands natural language database questions and automatically generates appropriate SQL queries:
+
+- **Specific customer queries:** "What is the credit card for CompanyBot?" → Returns only that customer
+- **Generic queries:** "Show me credit cards" → Returns first 5 customers
+- **Flexible syntax:** Works with various phrasings:
+  - "customer <name>"
+  - "for <name>"
+  - "<name>'s credit card"
+  - "credit card for <name>"
+
+#### Human-Readable Responses
+Query results are formatted as natural language instead of raw JSON:
+- Customer information displayed with names, IDs, and emails
+- Data presented in numbered lists for easy reading
+- Sensitive data like credit cards displayed in context with customer info
+- Clean, professional formatting suitable for business use
+
+#### Multi-Provider Support
+Switch between LLM providers from the Admin Settings page:
+- **Anthropic Claude** — Default, best for analysis
+- **Google Gemini** — Fast responses
+- **OpenAI GPT-4/5** — Advanced reasoning
+
+#### Smart Query Execution
+- Detects specific customer requests automatically
+- Falls back to generic results if customer not found
+- Respects safety guardrails (write protection, DDL prevention)
+- Includes query timeouts and row limits
+
+### Info Box (Assistant Tab)
+The right sidebar in the Assistant tab displays:
+- **Current Model:** LLM provider and model name
+- **Available Tools:** List of accessible database tools with descriptions
+- **Guardrails Status:** Which operations are allowed (SELECT, INSERT, UPDATE, DELETE, DDL)
+- **Limits:** Max rows returned and query timeout settings
 
 ## Admin Settings
 
