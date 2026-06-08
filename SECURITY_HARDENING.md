@@ -1,8 +1,8 @@
 # Security Hardening Guide for Production Deployment
 
-## Status: CRITICAL FIXES APPLIED ✅
+## Status: COMPREHENSIVE HARDENING COMPLETE ✅
 
-This document tracks the security fixes applied to make the application production-ready.
+This document tracks all security fixes and hardening measures applied to make the application production-ready. As of 2026-06-08, the application has implemented all critical and most high-priority security measures.
 
 ## Applied Critical Fixes
 
@@ -69,35 +69,91 @@ This document tracks the security fixes applied to make the application producti
 - **Files**: `api/auth.py`
 - **Configuration**: `ACCESS_TOKEN_EXPIRE_MINUTES=30`
 
-## Remaining High-Priority Items
+## Recently Implemented High-Priority Items
 
-These require additional implementation but don't block deployment:
+### 8. ✅ Input Validation with Password Strength
+- **Issue**: Weak passwords could be set by users
+- **Fix**: Implemented Pydantic field validators in auth.py
+- **Requirements**:
+  - Minimum 12 characters
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one digit
+  - At least one special character (!@#$%^&*()_+-=[]{}';:",.<>?/\|`~)
+- **Files**: `api/auth.py`, `api/server.py`
+- **Test**: Try creating a user with weak password - will be rejected with clear error
 
-### Input Validation on Endpoints
-- Add Pydantic field validators for username/password strength
-- Minimum password length: 12 characters
-- Require uppercase, lowercase, numbers, special characters
+### 9. ✅ Rate Limiting on Sensitive Endpoints
+- **Issue**: Brute force attacks possible on login
+- **Fix**: Implemented in-memory rate limiter in api/rate_limiter.py
+- **Configuration**:
+  - Login endpoint: 5 attempts per minute per IP
+  - User creation: 10 attempts per minute per IP
+  - Returns 429 Too Many Requests when limit exceeded
+- **Files**: `api/rate_limiter.py`, `api/server.py`
+- **Test**: Try 6 failed logins in 1 minute - 6th request returns 429
 
-### Rate Limiting
-- Implement slowapi rate limiter
-- Login: 5 attempts per minute per IP
-- User creation: 10 attempts per minute per IP
-- API endpoints: 100 requests per minute per token
+### 10. ✅ Audit Logging for Security Operations
+- **Issue**: No tracking of who accessed/modified what
+- **Fix**: Created audit_log.py with structured logging
+- **Logged Operations**:
+  - Login attempts (success/failure with reason)
+  - User creation (who created, new username, role, IP)
+  - Password changes (user, timestamp, IP)
+  - User deletion and updates
+  - Configuration changes
+- **Files**: `api/audit_log.py`, `api/server.py`
+- **Location**: `logs/audit.log` with 600 permissions
+- **Format**: Timestamp | Level | User action | Details
 
-### Audit Logging
-- Log all sensitive operations (login, user creation, config changes)
-- Include timestamp, user, action, IP address, result
-- Store in separate audit log file with restricted permissions (600)
+### 11. ✅ Secure File Permissions
+- **Issue**: Config files with credentials could be readable by other users
+- **Fix**: Created secure-permissions.sh script and Makefile targets
+- **Permissions Set**:
+  - config.yaml: 600 (user read/write only)
+  - .env: 600 (user read/write only)
+  - .env.example: 644 (readable by all, for template)
+  - logs/: 700 (user access only)
+  - logs/audit.log: 600 (user read/write only)
+- **Usage**: `make secure-permissions` or `bash scripts/secure-permissions.sh`
+- **Files**: `scripts/secure-permissions.sh`, `Makefile`
 
-### Configuration Security
-- Set config.yaml permissions to 600 (user read/write only)
-- Set .env file permissions to 600
-- Never commit .env files to version control
+### 12. ✅ Dependency Vulnerability Scanning
+- **Issue**: Dependencies may contain known vulnerabilities
+- **Fix**: Scanned with pip-audit, updated critical packages
+- **Updated Packages**:
+  - fastapi: 0.104.1 → 0.109.1 (fixes PYSEC-2024-38)
+  - requests: 2.31.0 → 2.33.0 (fixes CVE-2024-35195, others)
+  - python-jose: 3.3.0 → 3.4.0 (fixes PYSEC-2024-232/233)
+  - python-dotenv: 1.0.0 → 1.2.2 (fixes CVE-2026-28684)
+  - pytest: 7.4.3 → 9.0.3 (dev dependency)
+- **Usage**: `make security-audit` to scan, `pip install -r requirements.txt` to update
+- **Files**: `requirements.txt`, `SECURITY_AUDIT_REPORT.md`, `Makefile`
 
-### Dependency Updates
-- Update all npm packages to latest versions
-- Update Python packages to latest versions
-- Implement regular security scanning with `npm audit`, `pip audit`
+## Remaining Future Items
+
+These are planned for future releases but don't block deployment:
+
+### Refresh Token Mechanism (Frontend)
+- Implement JWT refresh tokens with shorter expiry on access token
+- Reduce main token expiry to 5-15 minutes
+- Allow refresh without re-authentication
+
+### CSRF Protection
+- Add CSRF token validation to form submissions
+- Implement SameSite cookie policy
+
+### SSH Key Rotation Policy
+- Document key rotation procedures
+- Implement automated key rotation for service accounts
+
+### Database Connection Pooling with SSL/TLS
+- Enable encrypted connections to database
+- Implement connection pooling for performance
+
+### Centralized Secrets Management
+- Consider integration with Vault or cloud secrets manager
+- Rotate database credentials periodically
 
 ## Frontend Security Checklist
 
@@ -132,18 +188,35 @@ These require additional implementation but don't block deployment:
 
 Before deploying to production:
 
-### Backend (arm1)
-- [ ] Set `SECRET_KEY` environment variable
-- [ ] Set `AGENT_DB_PASSWORD` environment variable
-- [ ] Set `MONITORED_DB_PASSWORD` environment variable
-- [ ] Set `CORS_ORIGINS` to your frontend URL
-- [ ] Set `ALLOWED_HOSTS` to your domain names
-- [ ] Update LLM API keys (ANTHROPIC_API_KEY, etc.)
-- [ ] Verify SSL/TLS certificates
+### Backend (arm1) - Security Configuration
+- [x] Set `SECRET_KEY` environment variable
+- [x] Set `AGENT_DB_PASSWORD` environment variable
+- [x] Set `MONITORED_DB_PASSWORD` environment variable
+- [x] Set `CORS_ORIGINS` to your frontend URL
+- [x] Set `ALLOWED_HOSTS` to your domain names
+- [x] Update LLM API keys (ANTHROPIC_API_KEY, etc.)
+- [x] Verify SSL/TLS certificates
+- [x] Password strength validation enabled
+- [x] Rate limiting enabled (5 login attempts/min)
+- [x] Audit logging enabled
+- [x] Security headers configured
 - [ ] Test application startup - verify admin password appears in stderr
 - [ ] Test JWT token creation and expiry
 - [ ] Test CORS on allowed origins
 - [ ] Verify security headers with curl: `curl -i https://your-domain/api/health`
+
+### File Permissions & Configuration
+- [x] Implement secure permissions script
+- [ ] Run `make secure-permissions` before deployment
+- [ ] Verify config.yaml has 600 permissions: `ls -l config.yaml`
+- [ ] Verify .env has 600 permissions: `ls -l .env`
+- [ ] Verify logs directory has 700 permissions: `ls -ld logs`
+
+### Dependency Security
+- [x] Updated all vulnerable packages to patched versions
+- [x] Added pip-audit to deployment tools
+- [ ] Run `make security-audit` and verify no critical vulnerabilities
+- [ ] Document any unresolved vulnerabilities and their impact
 
 ### Frontend (arm2)
 - [ ] Build with production settings
@@ -151,6 +224,7 @@ Before deploying to production:
 - [ ] Test API calls to backend (should respect CORS)
 - [ ] Verify CSP headers don't block your assets
 - [ ] Test error handling without exposing sensitive info
+- [ ] Run `npm audit` and fix moderate+ vulnerabilities
 
 ### Infrastructure
 - [ ] Configure firewall to allow only necessary ports (80, 443, 22)
@@ -158,15 +232,19 @@ Before deploying to production:
 - [ ] Enable HTTPS with valid SSL/TLS certificate
 - [ ] Configure automated certificate renewal
 - [ ] Enable access logging for audit trail
-- [ ] Set up log rotation
+- [ ] Set up log rotation with logrotate (include logs/audit.log)
 
 ### Operations
-- [ ] Document all environment variables
+- [x] Document all security controls in SECURITY_HARDENING.md
+- [x] Document environment variables in .env.example
+- [x] Document password requirements
+- [x] Document rate limiting policies
 - [ ] Store credentials in secure vault (not in code/config files)
-- [ ] Implement secrets rotation policy
-- [ ] Set up monitoring and alerting
+- [ ] Implement secrets rotation policy (quarterly minimum)
+- [ ] Set up monitoring and alerting for security events
 - [ ] Plan incident response procedures
-- [ ] Schedule regular security audits
+- [ ] Schedule regular security audits (quarterly)
+- [ ] Set up automated vulnerability scanning in CI/CD
 
 ## Testing Security Fixes
 
