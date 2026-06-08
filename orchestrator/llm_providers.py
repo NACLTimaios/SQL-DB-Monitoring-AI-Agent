@@ -410,11 +410,144 @@ class OpenAIProvider(LLMProvider):
         return tools
 
 
+class PrismaAIProvider(LLMProvider):
+    """Prisma AI (or compatible OpenAI-compatible) API provider."""
+
+    def chat(self, user_message: str, available_tools: dict) -> ProviderResponse:
+        """Send message to Prisma AI via compatible OpenAI API."""
+        api_key = os.environ.get("PRISMA_API_KEY")
+        api_url = os.environ.get("PRISMA_API_URL")
+
+        if not api_key or not api_url:
+            return ProviderResponse(
+                assistant_message="",
+                tools_used=[],
+                error="PRISMA_API_KEY or PRISMA_API_URL not configured",
+            )
+
+        try:
+            import requests
+
+            # Initialize conversation with system prompt
+            messages = []
+            if self.system_prompt:
+                messages.append({"role": "system", "content": self.system_prompt})
+            messages.append({"role": "user", "content": user_message})
+
+            # Build tools for the API
+            tools = self._build_openai_compatible_tools(available_tools)
+
+            # Prepare request payload
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 2048,
+            }
+
+            # Add tools if available
+            if tools:
+                payload["tools"] = tools
+
+            # Make API request
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+            response = requests.post(
+                f"{api_url}/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=30,
+            )
+
+            response.raise_for_status()
+            result = response.json()
+
+            # Extract response
+            assistant_message = ""
+            tools_used = []
+            stop_reason = "end_turn"
+
+            if "choices" in result and result["choices"]:
+                choice = result["choices"][0]
+                message = choice.get("message", {})
+
+                # Get text content
+                if "content" in message and message["content"]:
+                    assistant_message = message["content"]
+
+                # Handle tool calls if present
+                if "tool_calls" in message and message["tool_calls"]:
+                    for tool_call in message["tool_calls"]:
+                        tool_name = tool_call.get("function", {}).get("name")
+                        if tool_name:
+                            tools_used.append(tool_name)
+                            try:
+                                # Parse arguments
+                                args_str = tool_call.get("function", {}).get("arguments", "{}")
+                                params = json.loads(args_str) if isinstance(args_str, str) else args_str
+                                tool_result = self._execute_tool(tool_name, params)
+                                assistant_message += f"\n[Executed {tool_name}]\n{tool_result}\n"
+                            except Exception as e:
+                                logger.error(f"Tool execution error: {e}")
+                                assistant_message += f"\n[Tool execution failed: {e}]\n"
+
+                stop_reason = choice.get("finish_reason", "stop")
+
+            return ProviderResponse(
+                assistant_message=assistant_message,
+                tools_used=tools_used,
+                stop_reason=stop_reason,
+            )
+
+        except requests.exceptions.RequestException as e:
+            logger.error("Prisma AI API request error: %s", e)
+            return ProviderResponse(
+                assistant_message="",
+                tools_used=[],
+                error=f"API request failed: {str(e)}",
+            )
+        except Exception as e:
+            logger.error("Prisma AI API error: %s", e, exc_info=True)
+            return ProviderResponse(
+                assistant_message="",
+                tools_used=[],
+                error=str(e),
+            )
+
+    def _build_openai_compatible_tools(self, available_tools: dict) -> list:
+        """Build OpenAI-compatible function calling schema for Prisma AI."""
+        tools = []
+        for tool_name in self.tools:
+            if tool_name in available_tools:
+                tool_def = available_tools[tool_name]
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "description": tool_def["description"],
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    param: {"type": "string"}
+                                    for param in tool_def["parameters"].keys()
+                                },
+                                "required": [],
+                            },
+                        },
+                    }
+                )
+        return tools
+
+
 def get_provider(llm_provider: str, config: dict, db_config: dict) -> LLMProvider:
     """Factory function to get the appropriate LLM provider.
 
     Args:
-        llm_provider: Provider name ("anthropic", "google", "openai")
+        llm_provider: Provider name ("anthropic", "google", "openai", "prisma")
         config: Provider configuration
         db_config: Database configuration
 
@@ -428,6 +561,7 @@ def get_provider(llm_provider: str, config: dict, db_config: dict) -> LLMProvide
         "anthropic": AnthropicProvider,
         "google": GoogleProvider,
         "openai": OpenAIProvider,
+        "prisma": PrismaAIProvider,
     }
 
     if llm_provider not in providers:
