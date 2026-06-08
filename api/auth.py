@@ -3,13 +3,14 @@
 import os
 import logging
 import secrets
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import jwt
 
 logger = logging.getLogger(__name__)
@@ -26,10 +27,49 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Reduced from 24 hours to 30 minutes for bett
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
+# Password validation
+def validate_password_strength(password: str) -> None:
+    """Validate password meets security requirements.
+
+    Raises ValueError if password doesn't meet requirements.
+    """
+    if len(password) < 12:
+        raise ValueError("Password must be at least 12 characters long")
+    if not re.search(r'[A-Z]', password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not re.search(r'[a-z]', password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not re.search(r'[0-9]', password):
+        raise ValueError("Password must contain at least one digit")
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', password):
+        raise ValueError("Password must contain at least one special character")
+
+
 # Pydantic models
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "dashboard"  # default role
+
+    @field_validator('username')
+    @classmethod
+    def username_valid(cls, v):
+        if len(v) < 3:
+            raise ValueError('Username must be at least 3 characters long')
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError('Username can only contain alphanumeric characters, underscores, and hyphens')
+        return v
+
+    @field_validator('password')
+    @classmethod
+    def password_valid(cls, v):
+        validate_password_strength(v)
+        return v
 
 
 class Token(BaseModel):
@@ -44,6 +84,12 @@ class TokenData(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+    @field_validator('new_password')
+    @classmethod
+    def new_password_valid(cls, v):
+        validate_password_strength(v)
+        return v
 
 
 # Password utilities

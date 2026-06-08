@@ -9,13 +9,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
-from api.auth import LoginRequest, Token, ChangePasswordRequest, authenticate_user, create_access_token, verify_token, change_user_password, get_current_user, verify_token_payload
+from api.auth import LoginRequest, Token, ChangePasswordRequest, CreateUserRequest, authenticate_user, create_access_token, verify_token, change_user_password, get_current_user, verify_token_payload, validate_password_strength
+from api.rate_limiter import login_limiter, user_creation_limiter, get_client_ip
+from api.audit_log import log_login_attempt, log_user_creation, log_password_change, log_user_deletion, log_user_update
 
 logger = logging.getLogger(__name__)
 
@@ -133,16 +135,17 @@ class ChatbotConfigUpdate(BaseModel):
     enabled: bool | None = None
 
 
-class CreateUserRequest(BaseModel):
-    username: str
-    password: str
-    role: str = "dashboard"  # default role
-
-
 class UpdateUserRequest(BaseModel):
     password: str | None = None
     role: str | None = None
     enabled: bool | None = None
+
+    @field_validator('password')
+    @classmethod
+    def password_valid(cls, v):
+        if v is not None:
+            validate_password_strength(v)
+        return v
 
 
 class UserResponse(BaseModel):
@@ -159,8 +162,17 @@ class UserResponse(BaseModel):
 
 
 @app.post("/api/login")
-def login(request: LoginRequest) -> Token:
+def login(login_request: LoginRequest, http_request: Request) -> Token:
     """Authenticate user and return JWT token."""
+    # Rate limiting: 5 attempts per minute per IP
+    client_ip = get_client_ip(http_request)
+    if not login_limiter.is_allowed(client_ip):
+        log_login_attempt(login_request.username, False, client_ip, "Rate limit exceeded")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Please try again later.",
+        )
+
     session_factory = _state.get("session_factory")
     if not session_factory:
         raise HTTPException(
@@ -170,15 +182,17 @@ def login(request: LoginRequest) -> Token:
 
     session = session_factory()
     try:
-        if not authenticate_user(session, request.username, request.password):
+        if not authenticate_user(session, login_request.username, login_request.password):
+            log_login_attempt(login_request.username, False, client_ip, "Invalid credentials")
             raise HTTPException(
                 status_code=401,
                 detail="Invalid username or password",
             )
+        log_login_attempt(login_request.username, True, client_ip)
     finally:
         session.close()
 
-    access_token = create_access_token(data={"sub": request.username})
+    access_token = create_access_token(data={"sub": login_request.username})
     return Token(access_token=access_token, token_type="bearer")
 
 
@@ -215,7 +229,7 @@ def get_current_user_info(username: str = Depends(verify_token)):
 
 
 @app.post("/api/change-password")
-def change_password(request: ChangePasswordRequest, username: str = Depends(verify_token)):
+def change_password(request: ChangePasswordRequest, username: str = Depends(verify_token), http_request: Request = None):
     """Change user's password."""
     session_factory = _state.get("session_factory")
     if not session_factory:
@@ -227,15 +241,29 @@ def change_password(request: ChangePasswordRequest, username: str = Depends(veri
     session = session_factory()
     try:
         change_user_password(session, username, request.current_password, request.new_password)
+
+        # Audit logging
+        client_ip = get_client_ip(http_request) if http_request else "unknown"
+        log_password_change(username, username, client_ip)
+
         return {"message": "Password changed successfully"}
     finally:
         session.close()
 
 
 @app.post("/api/users")
-def create_user(request: CreateUserRequest, username: str = Depends(verify_token)):
+def create_user(request: CreateUserRequest, username: str = Depends(verify_token), http_request: Request = None):
     """Create a new user (requires manage_users permission)."""
     from store.user_models import User, Role
+
+    # Rate limiting: 10 attempts per minute per IP
+    if http_request:
+        client_ip = get_client_ip(http_request)
+        if not user_creation_limiter.is_allowed(client_ip):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many user creation attempts. Please try again later.",
+            )
 
     session_factory = _state.get("session_factory")
     if not session_factory:
@@ -273,6 +301,10 @@ def create_user(request: CreateUserRequest, username: str = Depends(verify_token
 
         session.add(new_user)
         session.commit()
+
+        # Audit logging
+        role_name = request.role if request.role else "dashboard"
+        log_user_creation(username, request.username, role_name, client_ip if http_request else "unknown")
 
         logger.info(f"User created: {request.username}")
         return UserResponse(
