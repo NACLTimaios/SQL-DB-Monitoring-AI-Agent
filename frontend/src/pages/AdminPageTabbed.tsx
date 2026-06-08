@@ -17,7 +17,6 @@ export default function AdminPageTabbed() {
   const [activeTab, setActiveTab] = useState<'chatbot' | 'users'>('chatbot');
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchCurrentUser();
@@ -32,10 +31,8 @@ export default function AdminPageTabbed() {
         },
       });
       setUser(response.data);
-      setError('');
     } catch (err: any) {
-      setError('Failed to fetch user information');
-      console.error(err);
+      console.error('Failed to fetch user information:', err);
     } finally {
       setLoading(false);
     }
