@@ -46,8 +46,17 @@ export default function ChatBot() {
 
     const userMessage = input;
     setInput('');
-    setLoading(true);
     setError(null);
+
+    const tempMessage: Message = {
+      user_message: userMessage,
+      assistant_message: '',
+      tools_used: [],
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, tempMessage]);
+    setLoading(true);
 
     try {
       const token = localStorage.getItem('access_token');
@@ -58,15 +67,16 @@ export default function ChatBot() {
       );
 
       const data = response.data;
-      setMessages((prev) => [
-        ...prev,
-        {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
           user_message: userMessage,
           assistant_message: data.assistant_message,
           tools_used: data.tools_used || [],
           created_at: new Date().toISOString(),
-        },
-      ]);
+        };
+        return updated;
+      });
     } catch (err: any) {
       console.error('Chat error:', err);
       setError(
@@ -74,6 +84,7 @@ export default function ChatBot() {
           err?.message ||
           'Failed to send message'
       );
+      setMessages((prev) => prev.slice(0, -1));
     } finally {
       setLoading(false);
     }
@@ -137,17 +148,30 @@ export default function ChatBot() {
               </div>
             </div>
 
-            {/* Assistant message */}
+            {/* Assistant message or loading indicator */}
             <div className="flex justify-start w-full">
               <div className="bg-slate-700/50 text-slate-100 px-4 py-2 rounded-lg max-w-2xl md:max-w-3xl lg:max-w-4xl break-words">
-                <p className="text-2xl whitespace-pre-wrap">
-                  {msg.assistant_message}
-                </p>
-                {msg.tools_used.length > 0 && (
-                  <div className="text-lg text-slate-400 mt-2 pt-2 border-t border-slate-600">
-                    Tools: {msg.tools_used.join(', ')}
+                {msg.assistant_message ? (
+                  <>
+                    <p className="text-2xl whitespace-pre-wrap">
+                      {msg.assistant_message}
+                    </p>
+                    {msg.tools_used.length > 0 && (
+                      <div className="text-lg text-slate-400 mt-2 pt-2 border-t border-slate-600">
+                        Tools: {msg.tools_used.join(', ')}
+                      </div>
+                    )}
+                  </>
+                ) : loading && idx === messages.length - 1 ? (
+                  <div className="flex items-center gap-2 py-1">
+                    <div className="flex gap-1">
+                      <span className="inline-block w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
+                      <span className="inline-block w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                      <span className="inline-block w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                    </div>
+                    <span className="text-slate-400 ml-2">Assistant is thinking...</span>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
