@@ -86,11 +86,30 @@ export default function ChatBot() {
     }
   };
 
+  const handleClearHistory = () => {
+    if (messages.length === 0) return;
+    if (window.confirm('Are you sure you want to clear the chat history? This cannot be undone.')) {
+      setMessages([]);
+      setError(null);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full w-full bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl overflow-hidden">
-      <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 border-b border-slate-700 px-4 py-3 flex-shrink-0">
-        <h3 className="text-lg font-semibold text-white">Database Assistant</h3>
-        <p className="text-xs text-slate-400 mt-1">Ask questions about your database • Powered by AI</p>
+      <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 border-b border-slate-700 px-4 py-3 flex-shrink-0 flex items-start justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Database Assistant</h3>
+          <p className="text-xs text-slate-400 mt-1">Ask questions about your database • Powered by AI</p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={handleClearHistory}
+            title="Clear chat history"
+            className="flex-shrink-0 ml-4 bg-slate-700/50 hover:bg-red-900/50 text-slate-300 hover:text-red-300 px-3 py-1 rounded text-sm transition-colors"
+          >
+            🗑️ Clear
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
