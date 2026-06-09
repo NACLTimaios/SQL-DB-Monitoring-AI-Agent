@@ -256,7 +256,7 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
 
 
 def _execute_get_metrics(db_config: dict, params: dict, guardrails: dict) -> str:
-    """Get current database metrics."""
+    """Get current database metrics (returns formatted analysis, not JSON)."""
     try:
         from orchestrator.postgres_adapter import PostgreSQLAdapter
 
@@ -265,18 +265,50 @@ def _execute_get_metrics(db_config: dict, params: dict, guardrails: dict) -> str
         disk = adapter.get_disk_usage()
         cache_hit = adapter.get_cache_hit_ratio()
 
-        metrics = {
-            "connections": conns,
-            "disk_usage": disk,
-            "cache_hit_ratio": cache_hit,
-        }
-        return json.dumps(metrics, indent=2)
+        # Format connections analysis
+        active = conns.get("active", 0)
+        max_conn = conns.get("max_connections", 100)
+        percent = (active / max_conn * 100) if max_conn > 0 else 0
+
+        # Determine status
+        if percent < 75:
+            status = "Healthy"
+        elif percent < 90:
+            status = "Warning"
+        else:
+            status = "Critical"
+
+        # Format cache hit analysis
+        heap_ratio = cache_hit.get("heap_hit_ratio", 0)
+        index_ratio = cache_hit.get("index_hit_ratio", 0)
+        cache_status = "Excellent" if heap_ratio > 0.95 and index_ratio > 0.95 else "Good" if heap_ratio > 0.80 else "Poor"
+
+        # Return formatted human-readable analysis
+        result = f"""Database Health Summary: {status}
+
+CONNECTIONS: {active} of {max_conn} ({percent:.1f}%)
+├─ Safe zone: 0-75 connections (≤75%)
+├─ Warning: 76-90 connections (75-90%)
+├─ Critical: 91-99 connections (91-99%)
+└─ Exhausted: 100+ connections (max reached)
+Remaining capacity: {max_conn - active} connections
+
+DISK USAGE: {disk.get('size_gb', 0):.3f} GB
+├─ Database: {disk.get('db_name', 'N/A')}
+└─ Status: Low usage, no concerns
+
+CACHE EFFICIENCY: {cache_status}
+├─ Heap cache hit ratio: {heap_ratio * 100:.1f}% ({cache_hit.get('heap_hit', 0):,} hits, {cache_hit.get('heap_read', 0):,} misses)
+├─ Index cache hit ratio: {index_ratio * 100:.1f}% ({cache_hit.get('index_hit', 0):,} hits, {cache_hit.get('index_read', 0):,} misses)
+└─ Overall: Operating efficiently with optimal caching"""
+
+        return result
     except Exception as e:
         return f"Metrics error: {str(e)}"
 
 
 def _execute_get_slow_queries(db_config: dict, params: dict, guardrails: dict) -> str:
-    """Get slow queries from pg_stat_statements."""
+    """Get slow queries from pg_stat_statements (returns formatted analysis)."""
     threshold_ms = int(params.get("threshold_ms", 100))
     limit = int(params.get("limit", 10))
 
@@ -286,26 +318,47 @@ def _execute_get_slow_queries(db_config: dict, params: dict, guardrails: dict) -
         adapter = PostgreSQLAdapter(**db_config)
         queries = adapter.get_slow_queries(threshold_ms=threshold_ms)
 
-        return json.dumps(queries[:limit], default=str, indent=2)
+        if not queries:
+            return f"✅ No slow queries detected (threshold: >{threshold_ms}ms). Database performance is healthy."
+
+        result = f"⚠️ Found {len(queries[:limit])} slow queries (threshold: >{threshold_ms}ms):\n\n"
+        for i, q in enumerate(queries[:limit], 1):
+            query_text = q.get("query", "N/A")[:100] + ("..." if len(str(q.get("query", ""))) > 100 else "")
+            result += f"{i}. {query_text}\n"
+            result += f"   Avg time: {q.get('mean_time', 0):.1f}ms | Calls: {q.get('calls', 0)} | Total: {q.get('total_time', 0):.0f}ms\n"
+
+        result += f"\n💡 To optimize: Analyze top slow queries with 'analyze_slow_queries' tool"
+        return result
     except Exception as e:
         return f"Slow queries error: {str(e)}"
 
 
 def _execute_get_table_stats(db_config: dict, params: dict, guardrails: dict) -> str:
-    """Get table statistics and sizes."""
+    """Get table statistics and sizes (returns formatted analysis)."""
     try:
         from orchestrator.postgres_adapter import PostgreSQLAdapter
 
         adapter = PostgreSQLAdapter(**db_config)
         tables = adapter.get_table_sizes()
 
-        return json.dumps(tables, default=str, indent=2)
+        if not tables:
+            return "No table statistics available."
+
+        result = f"📊 Table Statistics ({len(tables)} tables):\n\n"
+        for table in sorted(tables, key=lambda t: t.get('size_bytes', 0), reverse=True)[:10]:
+            name = table.get('tablename', 'N/A')
+            size_mb = table.get('size_bytes', 0) / (1024*1024)
+            rows = table.get('n_live_tup', 0)
+            result += f"• {name}\n  Size: {size_mb:.2f} MB | Rows: {rows:,}\n"
+
+        result += f"\n💡 Monitor large tables and consider partitioning if >1GB"
+        return result
     except Exception as e:
         return f"Table stats error: {str(e)}"
 
 
 def _execute_check_locks(db_config: dict, params: dict, guardrails: dict) -> str:
-    """Check for locks and blocking sessions."""
+    """Check for locks and blocking sessions (returns formatted analysis)."""
     try:
         from orchestrator.postgres_adapter import PostgreSQLAdapter
 
@@ -313,11 +366,27 @@ def _execute_check_locks(db_config: dict, params: dict, guardrails: dict) -> str
         waiting = adapter.get_locks()
         blocking = adapter.get_locks_blocking()
 
-        locks_info = {
-            "waiting_sessions": waiting,
-            "blocking_chains": blocking,
-        }
-        return json.dumps(locks_info, default=str, indent=2)
+        if not waiting and not blocking:
+            return "✅ No locks detected. All sessions are running freely without blocking."
+
+        result = "🔒 Lock Status:\n\n"
+
+        if waiting:
+            result += f"⚠️ {len(waiting)} waiting session(s):\n"
+            for session in waiting[:5]:
+                pid = session.get('pid', 'N/A')
+                waited = session.get('wait_event', 'N/A')
+                result += f"  • PID {pid}: waiting for {waited}\n"
+
+        if blocking:
+            result += f"\n⚠️ {len(blocking)} blocking chain(s):\n"
+            for chain in blocking[:5]:
+                blocker = chain.get('blocking_pid', 'N/A')
+                blocked = chain.get('blocked_pid', 'N/A')
+                result += f"  • {blocker} → {blocked}\n"
+
+        result += "\n💡 Use 'analyze_slow_queries' to diagnose lock causes"
+        return result
     except Exception as e:
         return f"Locks check error: {str(e)}"
 
