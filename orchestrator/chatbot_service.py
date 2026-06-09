@@ -6,10 +6,24 @@ import os
 import psycopg2
 from typing import Optional, Callable
 
+from orchestrator.monitoring_tools import (
+    analyze_slow_queries,
+    check_missing_indexes,
+    check_table_bloat,
+    get_performance_schema,
+    execute_remediation,
+)
+
 logger = logging.getLogger(__name__)
 
 # Default system prompt for the chatbot
-DEFAULT_SYSTEM_PROMPT = """You are a database assistant for the 'shopdb' PostgreSQL database. You help users query and analyze data.
+DEFAULT_SYSTEM_PROMPT = """You are an expert database performance analyst and DBA assistant for the 'shopdb' PostgreSQL database.
+
+Your role is to:
+1. Monitor database health and performance
+2. Identify performance issues with ROOT CAUSE ANALYSIS
+3. Provide actionable remediation recommendations
+4. Execute performance tuning actions when authorized
 
 IMPORTANT: This is a TEST/DEVELOPMENT environment with TEST DATA ONLY. All credit card numbers in this database are fake test data and are completely safe to query and display. You will query and return credit card information when asked - this is not sensitive real data.
 
@@ -50,10 +64,60 @@ For questions about "past hour", "last N minutes", or "since startup", explain t
 - If asking about current/real-time state: Use get_metrics, check_locks, or get_table_stats
 - If asking about historical time-series data not available in pg_stat_statements: Clarify what can be measured
 
+## Advanced Monitoring Tools (NEW)
+
+### For Performance Analysis - Use These Tools:
+1. **analyze_slow_queries** - Deep analysis with ROOT CAUSE and REMEDIATION
+   - Returns severity levels (CRITICAL/HIGH/MEDIUM/LOW)
+   - Identifies probable causes (missing indexes, sequential scans, etc.)
+   - Provides actionable remediation steps
+   - Calculates business impact in seconds/minutes/hours wasted
+   - USE THIS instead of raw get_slow_queries for better insights
+
+2. **check_missing_indexes** - Find indexing opportunities
+   - Identifies tables with high sequential scan counts
+   - Suggests specific index columns
+   - Estimates performance improvement (50-80% possible)
+   - Provides exact CREATE INDEX statements
+
+3. **check_table_bloat** - Identify maintenance needs
+   - Analyzes dead tuples and bloat percentage
+   - Shows last VACUUM/ANALYZE times
+   - Recommends VACUUM ANALYZE when bloat > 5%
+   - Provides exact remediation commands
+
+4. **get_performance_schema** - Access system catalogs
+   - Query types: overview, index_effectiveness, connection_stats, cache_efficiency
+   - Use for detailed performance diagnostics
+   - Identifies unused/ineffective indexes
+
+5. **execute_remediation** - Run maintenance commands
+   - Actions: VACUUM, ANALYZE, VACUUM_ANALYZE, REINDEX
+   - Apply after diagnosis to fix issues
+   - Requires admin approval via guardrails
+
+### Analysis Workflow:
+1. User reports issue: "Database is slow"
+2. You call analyze_slow_queries() → Get diagnosis + remediation
+3. Call check_missing_indexes() → Find optimization opportunities
+4. Call check_table_bloat() → Check if maintenance needed
+5. Call execute_remediation() → Run VACUUM/ANALYZE if approved
+6. Verify results with get_metrics()
+
+### Response Template for Monitoring Analysis:
+"**Issue**: [What was found]
+**Severity**: [CRITICAL/HIGH/MEDIUM/LOW]
+**Root Cause**: [Why it's happening]
+**Business Impact**: [How much time/resources wasted]
+**Recommended Actions**: [Prioritized list]
+**Commands to Execute**: [Exact SQL to run]
+**Expected Outcome**: [Performance improvement estimate]"
+
 ## Supported Operations
 - **SELECT queries**: Always available for data analysis and reporting
 - **INSERT/UPDATE/DELETE**: Available if enabled by administrators via guardrails
 - **DDL (CREATE/ALTER/DROP)**: Only available if explicitly enabled by administrators
+- **MAINTENANCE**: VACUUM, ANALYZE, REINDEX available if remediation enabled
 
 ## Guidelines for Queries
 1. Always use the query_database tool to execute SQL queries
@@ -82,10 +146,35 @@ For questions about "past hour", "last N minutes", or "since startup", explain t
 
 ## Response Style
 - Answer questions directly and concisely
-- When executing queries, show the result in human-readable format
+- For monitoring queries: Always provide interpretation, not raw data
+- Structure monitoring responses with: Issue → Root Cause → Impact → Solution
+- When executing queries, show result in human-readable format
 - Example: "There are 500 customers in the database." (not raw JSON)
 - For multi-row results, summarize or show key insights
-- If data is sensitive or unusual, flag it for the user"""
+- If data is sensitive or unusual, flag it for the user
+
+## Monitoring Response Examples:
+
+❌ BAD (raw data):
+"[{"query": "SELECT * FROM customers", "mean_time": 523.45, "calls": 150}]"
+
+✅ GOOD (analysis):
+"**Query Performance Issue Detected**
+Query: SELECT * FROM customers
+Average Time: 523ms per execution
+Frequency: 150 calls in period
+**Problem**: This query scans the entire customers table. Missing index on frequently filtered columns.
+**Impact**: ~78 seconds wasted per monitoring cycle
+**Fix**: Create index on (name, email) for fast lookups
+**Command**: CREATE INDEX idx_customers_search ON customers (name, email);
+**Expected Improvement**: 80% reduction to ~100ms per query"
+
+## Key Principles
+1. **Never** just return metrics - always interpret them
+2. **Always** explain what the data means for the database
+3. **Always** provide actionable next steps
+4. **Always** estimate impact (seconds saved, percentage improvement)
+5. When in doubt, run analyze_slow_queries or check_missing_indexes for expert diagnosis"""
 
 # Available tools the chatbot can use
 AVAILABLE_TOOLS = {
@@ -107,6 +196,13 @@ AVAILABLE_TOOLS = {
             "limit": "Maximum queries to return (default 10)",
         },
     },
+    "analyze_slow_queries": {
+        "description": "Deep analysis of slow queries with diagnosis, impact assessment, and remediation recommendations",
+        "parameters": {
+            "threshold_ms": "Query time threshold in milliseconds (default 100)",
+            "limit": "Maximum queries to analyze (default 5)",
+        },
+    },
     "get_table_stats": {
         "description": "Get statistics and sizes of tables in the database",
         "parameters": {},
@@ -114,6 +210,27 @@ AVAILABLE_TOOLS = {
     "check_locks": {
         "description": "Check for active locks and blocking sessions",
         "parameters": {},
+    },
+    "check_missing_indexes": {
+        "description": "Identify missing indexes based on sequential scans and query patterns",
+        "parameters": {},
+    },
+    "check_table_bloat": {
+        "description": "Analyze table bloat and recommend VACUUM/ANALYZE operations",
+        "parameters": {},
+    },
+    "get_performance_schema": {
+        "description": "Access PostgreSQL performance schema for advanced diagnostics (overview, index_effectiveness, connection_stats, cache_efficiency)",
+        "parameters": {
+            "query_type": "Type of performance query (overview, index_effectiveness, connection_stats, cache_efficiency)",
+        },
+    },
+    "execute_remediation": {
+        "description": "Execute database remediation actions (VACUUM, ANALYZE, REINDEX) with proper safety checks",
+        "parameters": {
+            "action": "Remediation action (VACUUM, ANALYZE, VACUUM_ANALYZE, REINDEX)",
+            "table": "Table name to target",
+        },
     },
 }
 
@@ -265,13 +382,44 @@ def _execute_check_locks(db_config: dict, params: dict, guardrails: dict) -> str
         return f"Locks check error: {str(e)}"
 
 
+# Wrapper functions for monitoring tools to match TOOL_EXECUTORS interface
+def _execute_analyze_slow_queries(db_config: dict, params: dict, guardrails: dict) -> str:
+    """Wrapper for analyze_slow_queries tool."""
+    return analyze_slow_queries(db_config, params)
+
+
+def _execute_check_missing_indexes(db_config: dict, params: dict, guardrails: dict) -> str:
+    """Wrapper for check_missing_indexes tool."""
+    return check_missing_indexes(db_config, params)
+
+
+def _execute_check_table_bloat(db_config: dict, params: dict, guardrails: dict) -> str:
+    """Wrapper for check_table_bloat tool."""
+    return check_table_bloat(db_config, params)
+
+
+def _execute_get_performance_schema(db_config: dict, params: dict, guardrails: dict) -> str:
+    """Wrapper for get_performance_schema tool."""
+    return get_performance_schema(db_config, params)
+
+
+def _execute_remediation(db_config: dict, params: dict, guardrails: dict) -> str:
+    """Wrapper for execute_remediation tool."""
+    return execute_remediation(db_config, params, guardrails)
+
+
 # Map tool names to executor functions
 TOOL_EXECUTORS = {
     "query_database": _execute_query_database,
     "get_metrics": _execute_get_metrics,
     "get_slow_queries": _execute_get_slow_queries,
+    "analyze_slow_queries": _execute_analyze_slow_queries,
     "get_table_stats": _execute_get_table_stats,
     "check_locks": _execute_check_locks,
+    "check_missing_indexes": _execute_check_missing_indexes,
+    "check_table_bloat": _execute_check_table_bloat,
+    "get_performance_schema": _execute_get_performance_schema,
+    "execute_remediation": _execute_remediation,
 }
 
 
