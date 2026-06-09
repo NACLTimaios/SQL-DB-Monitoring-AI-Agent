@@ -2,7 +2,6 @@
 
 import json
 import logging
-from typing import dict, list
 
 logger = logging.getLogger(__name__)
 
