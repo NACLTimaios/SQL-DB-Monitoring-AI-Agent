@@ -123,7 +123,13 @@ The chatbot works with multiple LLM providers, optimized for different use cases
 | **Anthropic** | Claude 3 Haiku | Very cheap | Budget deployments |
 | **OpenAI** | GPT-4 Turbo | Moderate-High | Complex analysis |
 | **OpenAI** | GPT-3.5 | Very cheap | Simple queries |
-| **Google** | Gemini Pro | Moderate | Balanced performance |
+| **Google** | Gemini 2.0 Flash | Low | Newest, balanced, fast |
+| **Google** | Gemini 1.5 Pro | Moderate | Complex analysis, longer context |
+| **Google** | Gemini 1.5 Flash | Very cheap | Budget, general purpose |
+| **Google** | Gemini 1.5 Flash-8B | Very cheap | Ultra-lightweight |
+| **Google** | Gemini 1.5 Flash-2B | Very cheap | Minimal resource |
+| **Google** | Gemini 1.5 Pro Vision | Moderate | Multi-modal (images + text) |
+| **Google** | Gemini 1.5 Flash Vision | Low | Budget multi-modal |
 | **Prisma AI** | Self-hosted or API | Variable | Custom deployments |
 | **Any** | OpenAI-compatible | Variable | Ollama, vLLM, Text Gen WebUI |
 

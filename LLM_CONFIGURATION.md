@@ -6,13 +6,13 @@ This guide explains how to configure different LLM providers for the chatbot, in
 
 The application supports multiple LLM providers through a pluggable provider system:
 
-| Provider | Status | Configuration |
-|----------|--------|---|
-| **Anthropic (Claude)** | ✅ Fully supported | API key only |
-| **Google (Gemini)** | ✅ Fully supported | API key only |
-| **OpenAI (GPT)** | ✅ Fully supported | API key only |
-| **Prisma AI** | ✅ Fully supported | API key + endpoint URL |
-| **Other OpenAI-compatible** | ✅ Compatible | API key + endpoint URL |
+| Provider | Status | Models | Configuration |
+|----------|--------|--------|---|
+| **Anthropic (Claude)** | ✅ Fully supported | 3 models | API key only |
+| **Google (Gemini)** | ✅ Fully supported | 7+ models | API key only |
+| **OpenAI (GPT)** | ✅ Fully supported | 2+ models | API key only |
+| **Prisma AI** | ✅ Fully supported | Any | API key + endpoint URL |
+| **Other OpenAI-compatible** | ✅ Compatible | Any | API key + endpoint URL |
 
 ## Storing API Keys and URLs Securely
 
@@ -193,6 +193,131 @@ curl -X POST http://localhost:8084/api/chatbot/chat \
   -H "Authorization: Bearer <your-token>" \
   -H "Content-Type: application/json" \
   -d '{"message":"SELECT * FROM customers LIMIT 1"}'
+```
+
+## Google Gemini Models
+
+### Available Models
+
+Google offers multiple Gemini models optimized for different use cases:
+
+#### Latest Models (Recommended)
+
+**Gemini 2.0 Flash** - Newest, fastest
+```bash
+export LLM_PROVIDER=google
+export LLM_MODEL=gemini-2.0-flash
+export GOOGLE_API_KEY=your-api-key
+```
+- **Cost**: Low (~0.5¢ per 1M input tokens)
+- **Speed**: Fastest inference
+- **Best for**: Real-time queries, budget-conscious deployments
+- **Context**: Latest capabilities
+
+#### Gemini 1.5 Series (Stable)
+
+**Gemini 1.5 Pro** - Best reasoning
+```bash
+export LLM_MODEL=gemini-1.5-pro
+```
+- **Cost**: Moderate (~$3 per 1M input tokens)
+- **Speed**: Medium
+- **Best for**: Complex analysis, multi-step reasoning
+- **Context**: 2M tokens
+- **Best for database monitoring**: Deep query analysis
+
+**Gemini 1.5 Flash** - General purpose
+```bash
+export LLM_MODEL=gemini-1.5-flash
+```
+- **Cost**: Very cheap (~0.5¢ per 1M input tokens)
+- **Speed**: Very fast
+- **Best for**: Most database queries and analysis
+- **Context**: 1M tokens
+- **Best for database monitoring**: All tools work well
+
+**Gemini 1.5 Flash-8B** - Lightweight
+```bash
+export LLM_MODEL=gemini-1.5-flash-8b
+```
+- **Cost**: Ultra cheap (~0.05¢ per 1M input tokens)
+- **Speed**: Fastest
+- **Best for**: Simple queries, low-resource environments
+- **Context**: Optimized for efficiency
+- **Note**: May struggle with very complex analysis
+
+**Gemini 1.5 Flash-2B** - Ultra-lightweight
+```bash
+export LLM_MODEL=gemini-1.5-flash-2b
+```
+- **Cost**: Ultra cheap (~0.02¢ per 1M input tokens)
+- **Speed**: Fastest
+- **Best for**: Minimal resources, simple queries only
+- **Note**: Limited reasoning capability
+
+#### Multi-Modal Models (Images + Text)
+
+**Gemini 1.5 Pro Vision**
+```bash
+export LLM_MODEL=gemini-1.5-pro-vision
+```
+- Can process images in addition to text
+- All database monitoring features work
+- Same cost as Gemini 1.5 Pro
+
+**Gemini 1.5 Flash Vision**
+```bash
+export LLM_MODEL=gemini-1.5-flash-vision
+```
+- Can process images in addition to text
+- All database monitoring features work
+- Same cost as Gemini 1.5 Flash
+
+### Model Selection Guide
+
+| Use Case | Recommended Model | Reason |
+|----------|-------------------|--------|
+| **Best overall** | Gemini 2.0 Flash | Fast, cheap, latest |
+| **Production deployment** | Gemini 1.5 Flash | Proven stable, very cheap |
+| **Complex analysis** | Gemini 1.5 Pro | Better reasoning |
+| **Budget constrained** | Gemini 1.5 Flash-8B | Cheapest that works |
+| **Ultra-budget** | Gemini 1.5 Flash-2B | Bare minimum cost |
+| **Images needed** | Gemini 1.5 Flash Vision | Can see screenshots/diagrams |
+
+### Cost Comparison (per million input tokens)
+
+```
+Gemini 2.0 Flash:      $0.005  (cheapest + newest)
+Gemini 1.5 Flash-2B:   $0.020  (ultra cheap, limited)
+Gemini 1.5 Flash-8B:   $0.050  (very cheap, lightweight)
+Gemini 1.5 Flash:      $0.500  (recommended)
+Gemini 1.5 Pro:        $3.000  (advanced reasoning)
+
+For 1000 database queries (avg 100 tokens each):
+Gemini 2.0 Flash:    $0.50/month
+Gemini 1.5 Flash-8B: $5.00/month
+Gemini 1.5 Flash:    $50/month
+Gemini 1.5 Pro:      $300/month
+```
+
+### Recommended Setup
+
+For most database monitoring:
+```bash
+export LLM_PROVIDER=google
+export LLM_MODEL=gemini-1.5-flash
+export GOOGLE_API_KEY=your-google-api-key
+python3 main.py run --config config.yaml
+```
+
+For budget deployments:
+```bash
+export LLM_MODEL=gemini-1.5-flash-8b  # Ultra cheap
+```
+
+For complex analysis:
+```bash
+export LLM_MODEL=gemini-1.5-pro  # Better reasoning
 ```
 
 ## Switching Between Providers
