@@ -65,7 +65,8 @@ def scan_prompt(prompt: str, model: str = "gemini-2.5-pro") -> dict:
 
         if response.status_code != 200:
             error_msg = f"Prisma AIRS API error: {response.status_code}"
-            logger.error(f"{error_msg} - {response.text}")
+            # Log status code only, never log response body (could contain API key)
+            logger.error(f"{error_msg} from Palo Alto API")
             # On error, default to allowing the request (fail-open for availability)
             return {"safe": True, "risk_level": "low", "threats": [], "confidence": 0.0, "error": error_msg}
 
@@ -150,7 +151,8 @@ def scan_response(response_text: str, model: str = "gemini-2.5-pro") -> dict:
 
         if response.status_code != 200:
             error_msg = f"Prisma AIRS API error: {response.status_code}"
-            logger.error(f"{error_msg} - {response.text}")
+            # Log status code only, never log response body (could contain API key)
+            logger.error(f"{error_msg} from Palo Alto API")
             # Fail-open: allow response if scanning fails
             return {"safe": True, "risk_level": "low", "threats": [], "confidence": 0.0, "error": error_msg}
 
