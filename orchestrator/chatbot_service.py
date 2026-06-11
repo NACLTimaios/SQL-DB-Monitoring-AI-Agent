@@ -723,6 +723,22 @@ class ChatbotService:
                     logger.warning("Direct credit card query failed: %s", e)
                     # Fall through to normal LLM processing
 
+            # SECURITY: Scan prompt with Prisma AIRS before sending to LLM
+            from api.prisma_airs import scan_prompt
+            scan_result = scan_prompt(user_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+
+            if not scan_result["safe"]:
+                # Threat detected - block the request
+                threat_summary = ", ".join(scan_result["threats"]) if scan_result["threats"] else "Unknown threat"
+                error_msg = f"Request blocked by security scanner: {threat_summary} (Risk: {scan_result['risk_level']})"
+                logger.warning(f"Security threat blocked: {error_msg}")
+                return {
+                    "assistant_message": error_msg,
+                    "tools_used": [],
+                    "stop_reason": "security_block",
+                    "error": error_msg,
+                }
+
             # Get the appropriate provider
             provider = get_provider(self.llm_provider_name, self.config, self.db_config)
 
