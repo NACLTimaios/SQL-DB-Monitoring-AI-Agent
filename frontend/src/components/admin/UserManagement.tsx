@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { client } from '../../utils/api';
 
 interface User {
   id: number;
@@ -35,12 +35,7 @@ export default function UserManagement() {
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.get('/api/users', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await client.get('/users');
       setUsers(response.data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load users');
@@ -63,12 +58,7 @@ export default function UserManagement() {
     setSuccess('');
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.post('/api/users', formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await client.post('/users', formData);
 
       setSuccess(`✓ User '${response.data.username}' created successfully`);
       setFormData({ username: '', password: '', role: 'dashboard' });
@@ -91,12 +81,7 @@ export default function UserManagement() {
     }
 
     try {
-      const token = localStorage.getItem('access_token');
-      await axios.delete(`/api/users/${userId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      await client.delete(`/users/${userId}`);
 
       setSuccess(`✓ User '${username}' deleted successfully`);
       fetchUsers();

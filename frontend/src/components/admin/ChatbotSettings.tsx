@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { client } from '../../utils/api';
 
 interface ChatbotConfig {
   llm_provider: string;
@@ -47,18 +47,15 @@ export default function ChatbotSettings() {
   const loadConfig = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const headers = { Authorization: `Bearer ${token}` };
       const [configRes, toolsRes] = await Promise.all([
-        axios.get('/api/chatbot/config', { headers }),
-        axios.get('/api/chatbot/tools', { headers }),
+        client.get('/chatbot/config'),
+        client.get('/chatbot/tools'),
       ]);
 
       setConfig(configRes.data);
       setAvailableTools(toolsRes.data);
       setMessage(null);
     } catch (err: any) {
-      console.error('Failed to load config:', err);
       setMessage({
         type: 'error',
         text: 'Failed to load configuration',
@@ -70,13 +67,9 @@ export default function ChatbotSettings() {
 
   const loadModelsForProvider = async (provider: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.get(`/api/chatbot/models?provider=${provider}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await client.get(`/chatbot/models?provider=${provider}`);
       setAvailableModels(response.data.models);
-    } catch (err: any) {
-      console.error('Failed to load models:', err);
+    } catch {
       setAvailableModels([]);
     }
   };
@@ -86,16 +79,12 @@ export default function ChatbotSettings() {
 
     try {
       setSaving(true);
-      const token = localStorage.getItem('access_token');
-      await axios.post('/api/chatbot/config', config, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await client.post('/chatbot/config', config);
       setMessage({
         type: 'success',
         text: 'Configuration saved successfully',
       });
     } catch (err: any) {
-      console.error('Failed to save config:', err);
       setMessage({
         type: 'error',
         text: err?.response?.data?.detail || 'Failed to save configuration',

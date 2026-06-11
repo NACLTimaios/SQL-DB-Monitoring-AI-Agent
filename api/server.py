@@ -557,7 +557,7 @@ def get_db_summary(db_id: str, _: str = Depends(verify_token)):
             port=int(db_cfg.get("port", 5432)),
             database=db_cfg.get("database", "shopdb"),
             user=db_cfg.get("user", "monitoring"),
-            password=db_cfg.get("password", "changeme"),
+            password=db_cfg.get("password", ""),
         )
         conns = adapter.get_connections()
         disk = adapter.get_disk_usage()
@@ -593,18 +593,20 @@ def get_pending_insights(_: str = Depends(verify_token)):
 
     session = session_factory()
     try:
+        import json as _json
+
+        def _parse(desc):
+            try:
+                return _json.loads(desc) if desc else {}
+            except Exception:
+                return {}
+
         repo = Repository(session)
         domains = ["capacity", "performance", "locks"]
         result: dict[str, list] = {}
         total = 0
         for domain in domains:
             rows = repo.get_insights_by_domain(domain, status="pending", limit=20)
-            import json as _json
-            def _parse(desc):
-                try:
-                    return _json.loads(desc) if desc else {}
-                except Exception:
-                    return {}
             result[domain] = [
                 {
                     "id": r.id,

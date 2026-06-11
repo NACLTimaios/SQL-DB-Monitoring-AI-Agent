@@ -2,77 +2,78 @@ import axios from 'axios';
 
 const API_BASE = '/api';
 
-const getAuthHeader = () => {
+// Centralized axios instance with auth + 401 handling
+const client = axios.create({ baseURL: API_BASE });
+
+// Request interceptor: attach JWT from localStorage to every request
+client.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  console.log('Auth header:', headers ? 'Token present' : 'No token');
-  return headers;
-};
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor: on 401 (expired/invalid token), clear session and
+// redirect to login instead of leaving the UI in a silent broken state.
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem('access_token');
+      // Avoid redirect loops if already on the login screen
+      if (window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export { client };
 
 export async function fetchHealth() {
   try {
-    console.log('Fetching health...');
-    const response = await axios.get(`${API_BASE}/health`);
-    console.log('Health response:', response.data);
+    const response = await client.get('/health');
     return response.data;
-  } catch (error: any) {
-    console.error('Health check failed:', error?.response?.data || error.message);
+  } catch {
     return null;
   }
 }
 
 export async function fetchAgentStatus() {
   try {
-    console.log('Fetching agent status...');
-    const response = await axios.get(`${API_BASE}/agent-status`, {
-      headers: getAuthHeader(),
-    });
-    console.log('Agent status response:', response.data);
+    const response = await client.get('/agent-status');
     return response.data;
-  } catch (error: any) {
-    console.error('Agent status failed:', error?.response?.data || error.message);
+  } catch {
     return null;
   }
 }
 
 export async function fetchDatabaseSummary(dbId: number) {
   try {
-    console.log('Fetching database summary...');
-    const response = await axios.get(`${API_BASE}/database/${dbId}/summary`, {
-      headers: getAuthHeader(),
-    });
-    console.log('Database summary response:', response.data);
+    const response = await client.get(`/database/${dbId}/summary`);
     return response.data;
-  } catch (error: any) {
-    console.error('Database summary failed:', error?.response?.data || error.message);
+  } catch {
     return null;
   }
 }
 
 export async function fetchInsightsPending() {
   try {
-    console.log('Fetching insights pending...');
-    const response = await axios.get(`${API_BASE}/insights/pending`, {
-      headers: getAuthHeader(),
-    });
-    console.log('Insights pending response:', response.data);
+    const response = await client.get('/insights/pending');
     return response.data;
-  } catch (error: any) {
-    console.error('Insights pending failed:', error?.response?.data || error.message);
+  } catch {
     return null;
   }
 }
 
 export async function fetchActivity(limit: number) {
   try {
-    console.log('Fetching activity...');
-    const response = await axios.get(`${API_BASE}/activity?limit=${limit}`, {
-      headers: getAuthHeader(),
-    });
-    console.log('Activity response:', response.data);
+    const response = await client.get(`/activity?limit=${limit}`);
     return response.data;
-  } catch (error: any) {
-    console.error('Activity fetch failed:', error?.response?.data || error.message);
+  } catch {
     return [];
   }
 }

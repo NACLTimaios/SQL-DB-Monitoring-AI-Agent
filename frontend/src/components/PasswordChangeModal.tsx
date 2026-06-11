@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import { client } from '../utils/api';
 
 interface PasswordChangeModalProps {
   isOpen: boolean;
@@ -26,24 +26,17 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
       return;
     }
 
-    if (newPassword.length < 8) {
-      setMessage({ type: 'error', text: 'Password must be at least 8 characters long' });
+    if (newPassword.length < 12) {
+      setMessage({ type: 'error', text: 'Password must be at least 12 characters long' });
       return;
     }
 
     try {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      await axios.post(
-        '/api/change-password',
-        {
-          current_password: currentPassword,
-          new_password: newPassword,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      await client.post('/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
 
       setMessage({ type: 'success', text: 'Password changed successfully' });
       setTimeout(() => {
