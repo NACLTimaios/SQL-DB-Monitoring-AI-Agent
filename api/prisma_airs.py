@@ -10,18 +10,10 @@ logger = logging.getLogger(__name__)
 PRISMA_AIRS_API_KEY = os.environ.get("PRISMA_AIRS_API_KEY")
 PRISMA_AIRS_REGION = os.environ.get("PRISMA_AIRS_REGION", "americas")
 
-# Region-specific API endpoints for Palo Alto Prisma AIRS
-PRISMA_AIRS_ENDPOINTS = {
-    "americas": "https://api.aisecurity.paloaltonetworks.com",
-    "eu-germany": "https://eu-de.api.aisecurity.paloaltonetworks.com",
-    "india": "https://in.api.aisecurity.paloaltonetworks.com",
-    "singapore": "https://sg.api.aisecurity.paloaltonetworks.com",
-}
-
-PRISMA_AIRS_API_URL = PRISMA_AIRS_ENDPOINTS.get(
-    PRISMA_AIRS_REGION.lower(),
-    PRISMA_AIRS_ENDPOINTS["americas"]  # Default to Americas
-)
+# Palo Alto Prisma AIRS API endpoint
+# Note: service.api endpoint works for all regions despite being generic-looking
+# API keys are region-locked but all regions use the same endpoint URL
+PRISMA_AIRS_API_URL = "https://service.api.aisecurity.paloaltonetworks.com"
 
 logger.info(f"Prisma AIRS configured for region: {PRISMA_AIRS_REGION} -> {PRISMA_AIRS_API_URL}")
 
