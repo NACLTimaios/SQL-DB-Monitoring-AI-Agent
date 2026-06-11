@@ -18,6 +18,7 @@ def analyze_slow_queries(db_config: dict, params: dict) -> str:
     threshold_ms = int(params.get("threshold_ms", 100))
     limit = int(params.get("limit", 5))
 
+    conn = None
     try:
         import psycopg2
 
@@ -95,6 +96,9 @@ def analyze_slow_queries(db_config: dict, params: dict) -> str:
             "error": str(e),
             "type": "analysis_error"
         })
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def check_missing_indexes(db_config: dict, params: dict) -> str:
@@ -105,6 +109,7 @@ def check_missing_indexes(db_config: dict, params: dict) -> str:
     - Recommended indexes based on access patterns
     - Estimated performance improvement
     """
+    conn = None
     try:
         import psycopg2
 
@@ -175,6 +180,9 @@ def check_missing_indexes(db_config: dict, params: dict) -> str:
             "error": str(e),
             "type": "index_analysis_error"
         })
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def check_table_bloat(db_config: dict, params: dict) -> str:
@@ -186,6 +194,7 @@ def check_table_bloat(db_config: dict, params: dict) -> str:
     - Last VACUUM/ANALYZE times
     - Recommendations
     """
+    conn = None
     try:
         import psycopg2
 
@@ -255,6 +264,9 @@ def check_table_bloat(db_config: dict, params: dict) -> str:
             "error": str(e),
             "type": "bloat_analysis_error"
         })
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def get_performance_schema(db_config: dict, params: dict) -> str:
@@ -268,6 +280,7 @@ def get_performance_schema(db_config: dict, params: dict) -> str:
     """
     query_type = params.get("query_type", "overview")
 
+    conn = None
     try:
         import psycopg2
 
@@ -340,6 +353,9 @@ def get_performance_schema(db_config: dict, params: dict) -> str:
             "error": str(e),
             "type": "schema_query_error"
         })
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def execute_remediation(db_config: dict, params: dict, guardrails: dict) -> str:
@@ -370,28 +386,35 @@ def execute_remediation(db_config: dict, params: dict, guardrails: dict) -> str:
             "allowed_actions": allowed_actions
         })
 
+    # Validate table name to prevent SQL identifier injection.
+    # Table/index identifiers cannot be passed as bound parameters, so they
+    # must be safely quoted via psycopg2.sql.Identifier and validated.
+    if not table:
+        return json.dumps({"error": "No table specified", "action": action})
+
+    conn = None
+    cursor = None
     try:
         import psycopg2
+        from psycopg2 import sql
 
         conn = psycopg2.connect(**db_config)
         cursor = conn.cursor()
 
-        # Build command
+        # Build command with safely-quoted identifier (prevents injection)
+        ident = sql.Identifier(table)
         if action == "VACUUM":
-            cmd = f"VACUUM (ANALYZE FALSE, VERBOSE) {table};"
+            cmd = sql.SQL("VACUUM (ANALYZE FALSE, VERBOSE) {}").format(ident)
         elif action == "ANALYZE":
-            cmd = f"ANALYZE {table};"
+            cmd = sql.SQL("ANALYZE {}").format(ident)
         elif action == "VACUUM_ANALYZE":
-            cmd = f"VACUUM ANALYZE {table};"
+            cmd = sql.SQL("VACUUM ANALYZE {}").format(ident)
         elif action == "REINDEX":
-            cmd = f"REINDEX TABLE {table};"
+            cmd = sql.SQL("REINDEX TABLE {}").format(ident)
 
-        # Execute
+        # VACUUM cannot run inside a transaction block
+        conn.autocommit = True
         cursor.execute(cmd)
-        conn.commit()
-
-        cursor.close()
-        conn.close()
 
         return json.dumps({
             "success": True,
@@ -407,6 +430,11 @@ def execute_remediation(db_config: dict, params: dict, guardrails: dict) -> str:
             "action": action,
             "type": "remediation_error"
         })
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
 
 
 # Helper functions

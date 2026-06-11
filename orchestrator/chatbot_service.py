@@ -211,6 +211,7 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
     if not allow_writes and not query_upper.startswith("SELECT"):
         return "Error: Only SELECT queries are allowed"
 
+    conn = None
     try:
         conn = psycopg2.connect(**db_config)
         cursor = conn.cursor()
@@ -230,29 +231,25 @@ def _execute_query_database(db_config: dict, params: dict, guardrails: dict) -> 
         # Handle write operations (no result set, just row count)
         if is_write_op:
             affected_rows = cursor.rowcount
-            cursor.close()
             conn.commit()
-            conn.close()
             # Return rows affected as JSON
             return json.dumps({"rows_affected": affected_rows}, default=str, indent=2)
 
         # Handle SELECT and other read operations
         if cursor.description is None:
-            cursor.close()
-            conn.close()
             return json.dumps({"message": "Query executed successfully"}, default=str, indent=2)
 
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
-
-        cursor.close()
-        conn.close()
 
         results = [dict(zip(columns, row)) for row in rows]
         return json.dumps(results, default=str, indent=2)
 
     except Exception as e:
         return f"Query error: {str(e)}"
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _execute_get_metrics(db_config: dict, params: dict, guardrails: dict) -> str:

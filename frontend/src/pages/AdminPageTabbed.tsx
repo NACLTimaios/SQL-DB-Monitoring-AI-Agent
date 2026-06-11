@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { client } from '../utils/api';
 import ChatbotSettings from '../components/admin/ChatbotSettings';
 import UserManagement from '../components/admin/UserManagement';
 
@@ -24,15 +24,10 @@ export default function AdminPageTabbed() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.get('/api/me', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await client.get('/me');
       setUser(response.data);
-    } catch (err: any) {
-      console.error('Failed to fetch user information:', err);
+    } catch {
+      // 401 is handled globally by the axios interceptor (redirect to login)
     } finally {
       setLoading(false);
     }

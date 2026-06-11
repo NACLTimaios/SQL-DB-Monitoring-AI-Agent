@@ -30,7 +30,7 @@ class CapacityDomain(Domain):
             port=int(db.get("port", 5432)),
             database=db.get("database", "shopdb"),
             user=db.get("user", "monitoring"),
-            password=db.get("password", "changeme"),
+            password=db.get("password", ""),
         )
         self._forecaster = CapacityForecaster()
 

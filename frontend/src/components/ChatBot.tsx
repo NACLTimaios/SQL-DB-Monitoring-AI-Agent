@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { client } from '../utils/api';
 
 interface Message {
   user_message: string;
@@ -26,14 +26,10 @@ export default function ChatBot() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const token = localStorage.getItem('access_token');
-        const response = await axios.get('/api/chatbot/history?limit=50', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await client.get('/chatbot/history?limit=50');
         setMessages(response.data);
         setError(null);
-      } catch (err) {
-        console.error('Failed to load chat history:', err);
+      } catch {
         setError('Failed to load chat history');
       }
     };
@@ -59,12 +55,7 @@ export default function ChatBot() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.post(
-        '/api/chatbot/chat',
-        { message: userMessage },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await client.post('/chatbot/chat', { message: userMessage });
 
       const data = response.data;
       setMessages((prev) => {
@@ -78,7 +69,6 @@ export default function ChatBot() {
         return updated;
       });
     } catch (err: any) {
-      console.error('Chat error:', err);
       setError(
         err?.response?.data?.detail ||
           err?.message ||
@@ -101,14 +91,10 @@ export default function ChatBot() {
     if (messages.length === 0) return;
     if (window.confirm('Are you sure you want to clear the chat history? This cannot be undone.')) {
       try {
-        const token = localStorage.getItem('access_token');
-        await axios.delete('/api/chatbot/history', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await client.delete('/chatbot/history');
         setMessages([]);
         setError(null);
-      } catch (err) {
-        console.error('Failed to clear chat history:', err);
+      } catch {
         setError('Failed to clear chat history');
       }
     }

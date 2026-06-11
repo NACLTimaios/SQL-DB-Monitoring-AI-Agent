@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { client } from '../utils/api';
 
 interface ChatbotConfig {
   llm_provider?: string;
@@ -50,32 +50,22 @@ export default function ChatbotInfoBox() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem('access_token');
+        // Fetch chatbot config, guardrails, and tools in parallel
+        const [configResponse, guardrailsResponse, toolsResponse] = await Promise.all([
+          client.get('/chatbot/config'),
+          client.get('/chatbot/guardrails'),
+          client.get('/chatbot/tools'),
+        ]);
 
-        // Fetch chatbot config
-        const configResponse = await axios.get('/api/chatbot/config', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
         setConfig(configResponse.data);
-
-        // Fetch guardrails
-        const guardrailsResponse = await axios.get('/api/chatbot/guardrails', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
         setGuardrails(guardrailsResponse.data);
-
-        // Fetch available tools
-        const toolsResponse = await axios.get('/api/chatbot/tools', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
 
         if (typeof toolsResponse.data === 'object') {
           setTools(Object.keys(toolsResponse.data));
         }
 
         setError(null);
-      } catch (err) {
-        console.error('Failed to load chatbot info:', err);
+      } catch {
         setError('Failed to load chatbot information');
       } finally {
         setLoading(false);
