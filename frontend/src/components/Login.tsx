@@ -37,21 +37,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Brand Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/50">
-              <span className="text-white font-bold text-xl">S</span>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
-                SELECTer
-              </h1>
-              <p className="text-slate-400 text-xs tracking-widest uppercase">SQL Monitoring</p>
-            </div>
-          </div>
-        </div>
-
         {/* Login Card */}
         <div className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 rounded-2xl shadow-2xl p-8 space-y-6">
           {error && (
@@ -96,11 +81,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </button>
           </form>
         </div>
-
-        {/* Footer */}
-        <p className="text-slate-500 text-xs text-center mt-8">
-          © 2026 SELECTer. All rights reserved.
-        </p>
       </div>
     </div>
   );
