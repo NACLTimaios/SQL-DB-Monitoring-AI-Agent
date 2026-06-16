@@ -483,7 +483,7 @@ PRISMA_AIRS_API_KEY=<your-api-key>              # Required for scanning
 PRISMA_AIRS_REGION=americas                     # locked server-side: americas|eu-germany|india|singapore
 PRISMA_AIRS_PROFILE_NAME=Default                # AI Security profile name (from Strata Cloud Manager)
 # OR use profile ID instead of name:
-# PRISMA_AIRS_PROFILE_ID=68200389-b40f-4adc-b6f1-d81e94ad3f93
+# PRISMA_AIRS_PROFILE_ID=<your-profile-uuid>   # Get from Palo Alto Strata Cloud Manager
 ```
 
 **Note:** Prisma AIRS is optional. If not configured, chatbot still works but without prompt/response scanning.
