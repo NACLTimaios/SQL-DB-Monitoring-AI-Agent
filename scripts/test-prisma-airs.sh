@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test Palo Alto Prisma AIRS API connectivity and authentication
+# Test Palo Alto Prisma AIRS API connectivity, authentication and scanning.
 
 set -e
 
@@ -8,20 +8,21 @@ echo "Palo Alto Prisma AIRS Diagnostic Test"
 echo "========================================="
 echo
 
-# Load API key from .env
+# Load config from .env
 if [ -f .env ]; then
-    export $(grep PRISMA_AIRS_API_KEY .env | xargs)
-    export $(grep PRISMA_AIRS_REGION .env | xargs)
+    export $(grep -E '^PRISMA_AIRS_' .env | xargs)
 fi
 
 API_KEY="${PRISMA_AIRS_API_KEY:-}"
-REGION="${PRISMA_AIRS_REGION:-americas}"
+PROFILE_NAME="${PRISMA_AIRS_PROFILE_NAME:-}"
+PROFILE_ID="${PRISMA_AIRS_PROFILE_ID:-}"
 ENDPOINT="https://service.api.aisecurity.paloaltonetworks.com"
+SCAN_PATH="/v1/scan/sync/request"
 
 echo "Configuration:"
-echo "  Endpoint: $ENDPOINT"
-echo "  Region:   $REGION"
+echo "  Endpoint: $ENDPOINT$SCAN_PATH"
 echo "  API Key:  ${API_KEY:0:20}***"
+echo "  Profile:  ${PROFILE_NAME:-${PROFILE_ID:-<none>}}"
 echo
 
 if [ -z "$API_KEY" ]; then
@@ -29,10 +30,15 @@ if [ -z "$API_KEY" ]; then
     exit 1
 fi
 
-echo "Testing connectivity..."
-echo
+# Build ai_profile block (name preferred, else id)
+if [ -n "$PROFILE_NAME" ]; then
+    AI_PROFILE="{\"profile_name\":\"$PROFILE_NAME\"}"
+elif [ -n "$PROFILE_ID" ]; then
+    AI_PROFILE="{\"profile_id\":\"$PROFILE_ID\"}"
+else
+    AI_PROFILE="{\"profile_name\":\"\"}"
+fi
 
-# Test 1: DNS Resolution
 echo "1. DNS Resolution Test:"
 if nslookup service.api.aisecurity.paloaltonetworks.com > /dev/null 2>&1; then
     echo "   ✅ Endpoint resolves correctly"
@@ -40,59 +46,40 @@ else
     echo "   ❌ FAILED: Cannot resolve endpoint"
     exit 1
 fi
-
 echo
 
-# Test 2: HTTPS Connection
-echo "2. HTTPS Connection Test:"
-if curl -s -I -H "x-pan-token: $API_KEY" \
-    "$ENDPOINT/scan" > /dev/null 2>&1; then
-    echo "   ✅ HTTPS connection successful"
-else
-    echo "   ⚠️  Connection test inconclusive (expected, API returns 405 for HEAD)"
-fi
-
-echo
-
-# Test 3: API Authentication
-echo "3. API Authentication Test:"
-RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT/scan" \
+echo "2. Scan API Test (auth + profile):"
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT$SCAN_PATH" \
     -H "x-pan-token: $API_KEY" \
     -H "Content-Type: application/json" \
-    -d '{
-        "metadata": {"type": "prompt"},
-        "contents": {"prompt": "test"}
-    }' 2>&1)
+    -d "{\"ai_profile\":$AI_PROFILE,\"metadata\":{\"app_name\":\"sql-agent\",\"app_user\":\"diag\"},\"contents\":[{\"prompt\":\"test\"}]}" 2>&1)
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
 BODY=$(echo "$RESPONSE" | head -n -1)
 
 echo "   HTTP Status: $HTTP_CODE"
-
 case $HTTP_CODE in
     200)
-        echo "   ✅ AUTHENTICATION SUCCESSFUL"
-        echo "   ✅ API Key is valid"
-        echo
-        echo "   Response:"
-        echo "$BODY" | head -n 3
+        echo "   ✅ SUCCESS — key authenticated and profile valid"
+        echo "   Response: $BODY"
+        ;;
+    400)
+        if echo "$BODY" | grep -qi "profile"; then
+            echo "   ⚠️  Key authenticates, but AI profile is missing/invalid."
+            echo "   Set PRISMA_AIRS_PROFILE_NAME in .env to a profile that exists"
+            echo "   in your Palo Alto tenant (Strata Cloud Manager > AI security profiles)."
+        else
+            echo "   ⚠️  Bad request: $BODY"
+        fi
         ;;
     401)
-        echo "   ❌ AUTHENTICATION FAILED"
-        echo "   Cause: Invalid API key or incorrect region"
-        echo
-        echo "   Actions:"
-        echo "   1. Verify API key from Palo Alto dashboard"
-        echo "   2. Confirm PRISMA_AIRS_REGION matches key region"
-        echo "   3. Ensure API key is activated in Palo Alto"
+        echo "   ❌ AUTH FAILED (401): Invalid/inactive API key"
         ;;
     403)
-        echo "   ❌ FORBIDDEN"
-        echo "   Cause: Key doesn't have permission for this API"
+        echo "   ❌ FORBIDDEN (403): $BODY"
         ;;
     *)
-        echo "   ⚠️  Unexpected HTTP code: $HTTP_CODE"
-        echo "   Response: $BODY"
+        echo "   ⚠️  Unexpected: $BODY"
         ;;
 esac
 
