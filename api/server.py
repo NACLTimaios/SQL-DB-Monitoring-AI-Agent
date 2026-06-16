@@ -1006,6 +1006,38 @@ def get_chatbot_guardrails(_: str = Depends(verify_token)):
         session.close()
 
 
+@app.post("/api/chatbot/prisma-airs/toggle")
+def toggle_prisma_airs(_: str = Depends(verify_token)):
+    """Toggle Prisma AIRS scanning on/off for demo purposes."""
+    from store.chatbot_models import ChatbotConfig
+
+    session_factory = _state.get("session_factory")
+    if not session_factory:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    session = session_factory()
+    try:
+        config = session.query(ChatbotConfig).first()
+        if not config:
+            raise HTTPException(status_code=404, detail="Chatbot config not found")
+
+        config.prisma_airs_enabled = not config.prisma_airs_enabled
+        session.commit()
+
+        return {
+            "prisma_airs_enabled": config.prisma_airs_enabled,
+            "message": f"Prisma AIRS is now {'enabled' if config.prisma_airs_enabled else 'disabled'}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error("Error toggling Prisma AIRS: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to toggle Prisma AIRS")
+    finally:
+        session.close()
+
+
 # ---------------------------------------------------------------------------
 # Entry-point
 # ---------------------------------------------------------------------------

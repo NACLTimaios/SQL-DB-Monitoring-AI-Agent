@@ -720,9 +720,14 @@ class ChatbotService:
                     logger.warning("Direct credit card query failed: %s", e)
                     # Fall through to normal LLM processing
 
-            # SECURITY: Scan prompt with Prisma AIRS before sending to LLM
-            from api.prisma_airs import scan_prompt
-            scan_result = scan_prompt(user_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+            # SECURITY: Scan prompt with Prisma AIRS before sending to LLM (if enabled)
+            prisma_airs_enabled = self.config.get("prisma_airs_enabled", True)
+
+            if prisma_airs_enabled:
+                from api.prisma_airs import scan_prompt
+                scan_result = scan_prompt(user_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+            else:
+                scan_result = {"safe": True, "risk_level": "low", "threats": [], "confidence": 1.0, "error": None}
 
             if not scan_result["safe"]:
                 # Threat detected - block the request
@@ -742,9 +747,12 @@ class ChatbotService:
             # Send message through provider
             response = provider.chat(user_message, AVAILABLE_TOOLS)
 
-            # SECURITY: Scan LLM response to detect data leakage or malicious output
-            from api.prisma_airs import scan_response
-            response_scan = scan_response(response.assistant_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+            # SECURITY: Scan LLM response to detect data leakage or malicious output (if enabled)
+            if prisma_airs_enabled:
+                from api.prisma_airs import scan_response
+                response_scan = scan_response(response.assistant_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+            else:
+                response_scan = {"safe": True, "risk_level": "low", "threats": [], "confidence": 1.0, "error": None}
 
             if not response_scan["safe"]:
                 # LLM generated unsafe content - block it

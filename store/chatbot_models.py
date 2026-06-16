@@ -23,6 +23,7 @@ class ChatbotConfig(Base):
     tools = Column(JSON, default=list)  # List of tool names
     guardrails = Column(JSON, default=dict)  # Safety constraints
     enabled = Column(Boolean, default=True)
+    prisma_airs_enabled = Column(Boolean, default=True)  # Toggle for demo purposes
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     def to_dict(self):
@@ -33,6 +34,7 @@ class ChatbotConfig(Base):
             "tools": self.tools or [],
             "guardrails": self.guardrails or {},
             "enabled": self.enabled,
+            "prisma_airs_enabled": self.prisma_airs_enabled,
         }
 
 

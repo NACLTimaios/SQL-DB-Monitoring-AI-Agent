@@ -4,6 +4,7 @@ import { client } from '../utils/api';
 interface ChatbotConfig {
   llm_provider?: string;
   llm_model?: string;
+  prisma_airs_enabled?: boolean;
 }
 
 interface Guardrails {
@@ -112,6 +113,27 @@ export default function ChatbotInfoBox() {
                     {config?.llm_model || 'Not configured'}
                   </span>
                 </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-slate-700" />
+
+            {/* Security Status */}
+            <div>
+              <h4 className="text-base font-semibold text-cyan-400 mb-2">🔒 Security</h4>
+              <div className="space-y-1">
+                <div className="text-sm text-slate-300">
+                  <span className="text-slate-500">Prisma AIRS:</span>{' '}
+                  <span className={`font-semibold ${config?.prisma_airs_enabled ? 'text-green-400' : 'text-red-400'}`}>
+                    {config?.prisma_airs_enabled ? '✅ Enabled' : '❌ Disabled'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 italic mt-2">
+                  {config?.prisma_airs_enabled
+                    ? 'Scanning prompts and responses for threats'
+                    : 'Scanning disabled (demo mode)'}
+                </p>
               </div>
             </div>
 

@@ -11,6 +11,7 @@ import ActivityFeed from './widgets/ActivityFeed';
 import PerformanceMetrics from './widgets/PerformanceMetrics';
 import ChatBot from './ChatBot';
 import ChatbotInfoBox from './ChatbotInfoBox';
+import PrismaAirsToggle from './PrismaAirsToggle';
 
 interface DashboardGridProps {
   healthData: any;
@@ -39,6 +40,7 @@ export default function DashboardGrid({
   const [isEditMode, setIsEditMode] = useState(false);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [rowHeight, setRowHeight] = useState(250);
+  const [prismaAirsEnabled, setPrismaAirsEnabled] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const metricsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -264,9 +266,17 @@ export default function DashboardGrid({
             <div className="flex-1 min-w-0">
               <ChatBot />
             </div>
-            {/* Info Box - Takes 30% of space */}
-            <div className="w-56 flex-shrink-0">
-              <ChatbotInfoBox />
+            {/* Info Box and Controls - Takes 30% of space */}
+            <div className="w-56 flex-shrink-0 flex flex-col gap-4 min-h-0">
+              {/* Prisma AIRS Toggle Button */}
+              <PrismaAirsToggle
+                enabled={prismaAirsEnabled}
+                onToggle={setPrismaAirsEnabled}
+              />
+              {/* Info Box */}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ChatbotInfoBox />
+              </div>
             </div>
           </div>
         </div>
