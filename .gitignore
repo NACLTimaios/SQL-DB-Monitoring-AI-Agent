@@ -6,6 +6,8 @@ __pycache__/
 logs/
 *.egg-info/
 .pytest_cache/
+api.log
+*.tar.gz
 
 # Configuration files with secrets
 config.yaml
