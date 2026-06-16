@@ -742,6 +742,22 @@ class ChatbotService:
             # Send message through provider
             response = provider.chat(user_message, AVAILABLE_TOOLS)
 
+            # SECURITY: Scan LLM response to detect data leakage or malicious output
+            from api.prisma_airs import scan_response
+            response_scan = scan_response(response.assistant_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+
+            if not response_scan["safe"]:
+                # LLM generated unsafe content - block it
+                threat_summary = ", ".join(response_scan["threats"]) if response_scan["threats"] else "Unsafe content detected"
+                error_msg = f"Response blocked by security scanner: {threat_summary} (Risk: {response_scan['risk_level']})"
+                logger.warning(f"Unsafe LLM output blocked: {error_msg}")
+                return {
+                    "assistant_message": error_msg,
+                    "tools_used": response.tools_used,
+                    "stop_reason": "security_block",
+                    "error": error_msg,
+                }
+
             # Clean the message to remove tool execution details
             cleaned_message = self._clean_assistant_message(response.assistant_message)
 
