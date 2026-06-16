@@ -70,6 +70,8 @@ def _interpret(result: dict) -> dict:
 
     if blocked:
         logger.warning("Prisma AIRS blocked content (category=%s, detections=%s)", category, threats)
+    else:
+        logger.info("Prisma AIRS allowed content (category=%s, risk_level=%s)", category, risk_level)
 
     return {
         "safe": not blocked,

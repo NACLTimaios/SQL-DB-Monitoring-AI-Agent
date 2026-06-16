@@ -656,6 +656,27 @@ class ChatbotService:
             from orchestrator.llm_providers import get_provider
             import re
 
+            # SECURITY: Scan prompt FIRST with Prisma AIRS before any processing (if enabled)
+            prisma_airs_enabled = self.config.get("prisma_airs_enabled", True)
+
+            if prisma_airs_enabled:
+                from api.prisma_airs import scan_prompt
+                scan_result = scan_prompt(user_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+            else:
+                scan_result = {"safe": True, "risk_level": "low", "threats": [], "confidence": 1.0, "error": None}
+
+            if not scan_result["safe"]:
+                # Threat detected - block the request
+                threat_summary = ", ".join(scan_result["threats"]) if scan_result["threats"] else "Unknown threat"
+                error_msg = f"Request blocked by security scanner: {threat_summary} (Risk: {scan_result['risk_level']})"
+                logger.warning(f"Security threat blocked: {error_msg}")
+                return {
+                    "assistant_message": error_msg,
+                    "tools_used": [],
+                    "stop_reason": "security_block",
+                    "error": error_msg,
+                }
+
             # Special handling for credit card queries (bypass Claude's safety constraints)
             if 'credit' in user_message.lower() and 'card' in user_message.lower():
                 try:
@@ -719,27 +740,6 @@ class ChatbotService:
                 except Exception as e:
                     logger.warning("Direct credit card query failed: %s", e)
                     # Fall through to normal LLM processing
-
-            # SECURITY: Scan prompt with Prisma AIRS before sending to LLM (if enabled)
-            prisma_airs_enabled = self.config.get("prisma_airs_enabled", True)
-
-            if prisma_airs_enabled:
-                from api.prisma_airs import scan_prompt
-                scan_result = scan_prompt(user_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
-            else:
-                scan_result = {"safe": True, "risk_level": "low", "threats": [], "confidence": 1.0, "error": None}
-
-            if not scan_result["safe"]:
-                # Threat detected - block the request
-                threat_summary = ", ".join(scan_result["threats"]) if scan_result["threats"] else "Unknown threat"
-                error_msg = f"Request blocked by security scanner: {threat_summary} (Risk: {scan_result['risk_level']})"
-                logger.warning(f"Security threat blocked: {error_msg}")
-                return {
-                    "assistant_message": error_msg,
-                    "tools_used": [],
-                    "stop_reason": "security_block",
-                    "error": error_msg,
-                }
 
             # Get the appropriate provider
             provider = get_provider(self.llm_provider_name, self.config, self.db_config)
