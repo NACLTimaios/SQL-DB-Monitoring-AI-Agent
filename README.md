@@ -74,7 +74,7 @@ The chatbot works with multiple LLM providers, optimized for different use cases
 | **Google** | Gemini 1.5 Pro Vision | Moderate | Multi-modal (images + text) |
 | **Google** | Gemini 1.5 Flash Vision | Low | Budget multi-modal |
 | **Prisma AI** | Self-hosted or API | Variable | Custom deployments |
-| **🔀 Portkey** | Any via Gateway | Variable | Route to any model, load balancing, caching |
+| **🔀 Portkey** | Any via Gateway | Variable | Conditional routing (user/tool), AIRS guardrail relay, load balancing, caching |
 | **Any** | OpenAI-compatible | Variable | Ollama, vLLM, Text Gen WebUI |
 
 ### Configuration
@@ -193,7 +193,25 @@ ChatbotService (provider-agnostic)
 User receives response (safe)
 ```
 
-### Security Scanning
+### AI Security via Portkey (current default)
+
+AI security scanning is now **relayed by the Portkey AI Gateway**. The Portkey
+config runs Prisma AIRS as a guardrail hook on every request, and the agent uses
+**conditional routing** by tagging each call with `request_type` metadata:
+
+- the initial user prompt is sent as `request_type: "user"`
+- follow-up calls carrying tool results are sent as `request_type: "tool"`
+
+When Portkey's guardrail blocks a request it returns an HTTP `446` (`hooks_failed`)
+response. The agent parses the `hook_results` and shows the user a **clear coaching
+message** describing what was detected (DLP, injection, toxic content, malicious
+code, etc.) and how to rephrase — instead of a raw error.
+
+The **direct** three-stage integration below is now a **legacy** path. It is
+admin-toggled from *Admin → Chatbot Settings* and **off by default** to avoid
+double-scanning while Portkey relays AIRS.
+
+### Security Scanning (legacy direct integration)
 
 **Three-Stage Threat Detection Pipeline:**
 

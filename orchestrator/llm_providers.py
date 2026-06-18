@@ -9,6 +9,93 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+# User-facing labels and coaching for each Prisma AIRS detection category that
+# Portkey can report in a guardrail (hooks_failed / HTTP 446) response.
+_AIRS_CATEGORIES = {
+    "dlp": (
+        "Sensitive data (DLP)",
+        "Your request involved sensitive data — e.g. personal info, credentials, or "
+        "card numbers. Remove or avoid sensitive/personal data and ask again.",
+    ),
+    "injection": (
+        "Prompt injection",
+        "Your input looked like an attempt to override the assistant's instructions. "
+        "Ask your question directly, without telling it to ignore rules or change behavior.",
+    ),
+    "toxic_content": (
+        "Toxic content",
+        "Your input was flagged as toxic or harmful. Please rephrase respectfully.",
+    ),
+    "malicious_code": (
+        "Malicious code",
+        "Your request was flagged as malicious code. I can't help create exploits or malware.",
+    ),
+    "agent": (
+        "Unsafe agent instruction",
+        "Your input was flagged as an unsafe agent-style instruction. Try a plain, direct request.",
+    ),
+    "url_cats": (
+        "Unsafe URL",
+        "Your input contained a URL flagged as unsafe. Remove or replace the link and try again.",
+    ),
+}
+
+# Where in the exchange a detection fired (Portkey/AIRS detection buckets).
+_AIRS_STAGES = {
+    "prompt_detected": "your input",
+    "response_detected": "the model's response",
+    "tool_detected": "a tool result",
+}
+
+
+def _portkey_guardrail_message(body) -> Optional[str]:
+    """Turn a Portkey guardrail error body (hooks_failed / HTTP 446) into a
+    friendly, user-facing message describing what Prisma AIRS detected, plus
+    coaching on how to fix it. Returns None if `body` isn't a guardrail failure.
+    """
+    if not isinstance(body, dict):
+        return None
+    hook_results = body.get("hook_results")
+    err = body.get("error") or {}
+    if not hook_results and err.get("type") != "hooks_failed":
+        return None
+
+    # Walk every hook -> check -> data, collecting which categories were detected
+    # (value True) and the stage they fired in. First stage seen wins per category.
+    detected: dict[str, str] = {}
+    groups = []
+    if isinstance(hook_results, dict):
+        groups = (hook_results.get("before_request_hooks") or []) + (
+            hook_results.get("after_request_hooks") or []
+        )
+    for hook in groups:
+        for check in hook.get("checks") or []:
+            data = check.get("data") or {}
+            for det_key, stage in _AIRS_STAGES.items():
+                for category, hit in (data.get(det_key) or {}).items():
+                    if hit and category not in detected:
+                        detected[category] = stage
+
+    header = "🛡️ Blocked by the Portkey AI security guardrail (Prisma AIRS)."
+    if not detected:
+        return (
+            f"{header}\n\nYour request didn't pass the security checks. "
+            "Please rephrase and try again."
+        )
+
+    lines = [header, ""]
+    for category, stage in detected.items():
+        label, coaching = _AIRS_CATEGORIES.get(
+            category, (category, "Please rephrase your request and try again.")
+        )
+        lines.append(f"• {label} detected in {stage}.")
+        lines.append(f"  → {coaching}")
+    lines.append("")
+    lines.append("If you believe this was a mistake, rephrase your question and try again.")
+    return "\n".join(lines)
+
+
+
 class ProviderResponse:
     """Unified response format from any LLM provider."""
 
@@ -605,64 +692,151 @@ class PortkeyProvider(LLMProvider):
     """
 
     def chat(self, user_message: str, available_tools: dict) -> ProviderResponse:
-        """Send message through Portkey AI Gateway."""
+        """Send message through Portkey AI Gateway with conditional routing.
+
+        Uses the native portkey_ai SDK. A Portkey Config (PORTKEY_CONFIG_ID) can
+        route requests differently based on per-request metadata `request_type`:
+          - the initial user prompt is tagged request_type="user"
+          - every follow-up call that carries tool results is tagged request_type="tool"
+
+        This is a real agentic loop: the model may call tools, we execute them,
+        feed the results back, and let the model produce a final answer.
+        """
         api_key = os.environ.get("PORTKEY_API_KEY")
         if not api_key:
             return ProviderResponse(
                 assistant_message="",
                 tools_used=[],
                 error="PORTKEY_API_KEY not configured",
+                tool_outputs={},
             )
 
         try:
             from portkey_ai import Portkey
+            from api.prisma_airs import is_prisma_airs_enabled, scan_response
 
-            portkey = Portkey(api_key=api_key)
+            # Attach the conditional-routing config if one is configured.
+            config_id = os.environ.get("PORTKEY_CONFIG_ID")
+            client_kwargs = {"api_key": api_key}
+            if config_id:
+                client_kwargs["config"] = config_id
+            portkey = Portkey(**client_kwargs)
 
-            # Build OpenAI-compatible function calling schema
             tools_schema = self._build_portkey_tools(available_tools)
 
-            # Call Portkey with function calling
-            response = portkey.chat.completions.create(
-                model=self.model,
-                max_tokens=4096,
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                tools=tools_schema if tools_schema else None,
-                tool_choice="auto" if tools_schema else None,
-            )
-
-            assistant_message = ""
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_message},
+            ]
             tools_used = []
             tool_outputs = {}
+            # Honor BOTH the admin/demo toggle (config) AND whether scanning is
+            # actually configured (env). The orchestration-level scans use the same
+            # config flag, so the in-loop tool scan must too, or toggling AIRS off
+            # would still block tool outputs here.
+            prisma_enabled = self.config.get("prisma_airs_enabled", True) and is_prisma_airs_enabled()
 
-            # Process response
-            if response.choices and response.choices[0].message:
-                message = response.choices[0].message
-                if message.content:
-                    assistant_message = message.content
+            # First call carries the user prompt; later calls carry tool results.
+            request_type = "user"
+            max_iterations = 10
 
-                # Handle tool calls
-                if hasattr(message, 'tool_calls') and message.tool_calls:
-                    for tool_call in message.tool_calls:
-                        tool_name = tool_call.function.name
+            for _ in range(max_iterations):
+                response = portkey.with_options(
+                    metadata={"request_type": request_type}
+                ).chat.completions.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    messages=messages,
+                    tools=tools_schema if tools_schema else None,
+                    tool_choice="auto" if tools_schema else None,
+                )
+
+                if not response.choices:
+                    return ProviderResponse(
+                        assistant_message="",
+                        tools_used=tools_used,
+                        stop_reason="stop",
+                        tool_outputs=tool_outputs,
+                    )
+
+                choice = response.choices[0]
+                message = choice.message
+                tool_calls = getattr(message, "tool_calls", None)
+
+                # No tool calls -> model produced its final answer.
+                if not tool_calls:
+                    return ProviderResponse(
+                        assistant_message=(message.content or "").strip(),
+                        tools_used=tools_used,
+                        stop_reason=choice.finish_reason or "stop",
+                        tool_outputs=tool_outputs,
+                    )
+
+                # Record the assistant turn (with its tool_calls) before adding results.
+                messages.append({
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
+                })
+
+                # Execute each requested tool, scan its output, then feed back.
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    if tool_name not in tools_used:
                         tools_used.append(tool_name)
-                        # Parse parameters from JSON
-                        params = json.loads(tool_call.function.arguments)
-                        tool_result = self._execute_tool(tool_name, params)
-                        # SECURITY: Capture raw tool output so chatbot_service can
-                        # scan it with Prisma AIRS (Stage 2 - tool output scanning)
-                        # before it is surfaced. Without this, the dedicated tool
-                        # output scan stage is bypassed.
-                        tool_outputs[tool_name] = tool_result
-                        assistant_message += f"\n[Executed {tool_name}]\n{tool_result}\n"
+                    params = json.loads(tool_call.function.arguments or "{}")
+                    tool_result = self._execute_tool(tool_name, params)
+                    tool_outputs[tool_name] = tool_result
 
+                    # SECURITY: scan tool output with Prisma AIRS BEFORE it is sent
+                    # back to the model. If unsafe, stop immediately so sensitive
+                    # data never reaches the LLM.
+                    if prisma_enabled:
+                        tool_scan = scan_response(tool_result, model=self.model)
+                        logger.info(
+                            "Tool output scan (%s): safe=%s, risk_level=%s, threats=%s",
+                            tool_name, tool_scan["safe"], tool_scan["risk_level"], tool_scan["threats"],
+                        )
+                        if not tool_scan["safe"]:
+                            threat_summary = ", ".join(tool_scan["threats"]) or "Sensitive data detected"
+                            error_msg = (
+                                f"🚨 [STAGE: TOOL OUTPUT] Security threat detected in {tool_name} results\n\n"
+                                f"Threats: {threat_summary}\nRisk Level: {tool_scan['risk_level'].upper()}\n\n"
+                                "The tool returned data flagged as unsafe. Processing stopped to prevent data leakage."
+                            )
+                            logger.warning("SECURITY: Unsafe tool output blocked in %s: %s", tool_name, threat_summary)
+                            return ProviderResponse(
+                                assistant_message="",
+                                tools_used=tools_used,
+                                stop_reason="security_block",
+                                error=error_msg,
+                                tool_outputs=tool_outputs,
+                            )
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result,
+                    })
+
+                # Subsequent calls carry tool results -> tag as "tool".
+                request_type = "tool"
+
+            # Loop guard exceeded.
             return ProviderResponse(
-                assistant_message=assistant_message,
+                assistant_message="",
                 tools_used=tools_used,
-                stop_reason=response.choices[0].finish_reason if response.choices else "stop",
+                error="Max tool use iterations reached",
                 tool_outputs=tool_outputs,
             )
 
@@ -671,13 +845,38 @@ class PortkeyProvider(LLMProvider):
                 assistant_message="",
                 tools_used=[],
                 error="Portkey SDK not installed. Install with: pip install portkey-ai",
+                tool_outputs={},
             )
         except Exception as e:
+            # Portkey runs Prisma AIRS as a guardrail hook; a blocked request comes
+            # back as an exception (HTTP 446 / hooks_failed). The SDK's `.body` keeps
+            # only the inner `error` object and drops `hook_results`, so read the full
+            # JSON body off the response instead. Translate it into a coaching message.
+            full_body = None
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    full_body = resp.json()
+                except Exception:  # noqa: BLE001
+                    full_body = None
+            if not isinstance(full_body, dict):
+                full_body = getattr(e, "body", None)
+            guardrail_msg = _portkey_guardrail_message(full_body)
+            if guardrail_msg:
+                logger.warning("Portkey AIRS guardrail blocked the request (HTTP %s)", getattr(e, "status_code", "?"))
+                return ProviderResponse(
+                    assistant_message=guardrail_msg,
+                    tools_used=locals().get("tools_used", []),
+                    stop_reason="security_block",
+                    error=guardrail_msg,
+                    tool_outputs=locals().get("tool_outputs", {}),
+                )
             logger.error("Portkey API error: %s", e, exc_info=True)
             return ProviderResponse(
                 assistant_message="",
                 tools_used=[],
                 error=str(e),
+                tool_outputs={},
             )
 
     def _build_portkey_tools(self, available_tools: dict) -> list:

@@ -709,103 +709,37 @@ class ChatbotService:
                     "prisma_airs_response_safe": True,
                 }
 
-            # Special handling for credit card queries (bypass Claude's safety constraints)
-            if 'credit' in user_message.lower() and 'card' in user_message.lower():
-                try:
-                    import json
-
-                    # Extract limit from message
-                    limit_match = re.search(r'limit\s+(\d+)', user_message, re.IGNORECASE)
-                    limit = int(limit_match.group(1)) if limit_match else 5
-
-                    # Check if user is asking for a specific customer
-                    # Pattern 1: "customer <name>" or "for <name>"
-                    customer_match = re.search(r'(?:customer|for)\s+([a-zA-Z0-9]+(?:\s+[a-zA-Z0-9]+)*?)(?:\s*[?!]?$|\s+(?:id|email|card|number|with|info|have|has|is|does))', user_message, re.IGNORECASE)
-
-                    customer_name = None
-                    query_params = ()
-                    if customer_match:
-                        # Specific customer requested
-                        customer_name = customer_match.group(1).strip().rstrip('?').strip()
-                        # If we matched "for" and got something like "for customer X", clean it up
-                        if 'customer' in customer_name.lower():
-                            customer_name = customer_name.split()[-1]
-                        # Use parameterized query to prevent SQL injection
-                        query = "SELECT id, name, email, credit_card_number FROM customers WHERE LOWER(name) LIKE LOWER(%s) LIMIT %s"
-                        query_params = (f"%{customer_name}%", limit)
-                        result_text = f"customer {customer_name}"
-                    else:
-                        # Generic request - return top N
-                        query = "SELECT id, name, email, credit_card_number FROM customers LIMIT %s"
-                        query_params = (limit,)
-                        result_text = f"first {limit} customers"
-
-                    result = _execute_query_database(self.db_config, {"query": query, "params": query_params, "limit": limit}, self.guardrails)
-
-                    # SECURITY: Scan tool output (credit card data) with Prisma AIRS
-                    tool_outputs = {"query_database": result}
-                    if prisma_airs_enabled:
-                        tool_scan = scan_response(result, model=self.config.get("llm_model", "gemini-2.5-pro"))
-                        logger.info(f"Tool output scan (query_database): safe={tool_scan['safe']}, risk_level={tool_scan['risk_level']}, threats={tool_scan['threats']}")
-                        if not tool_scan["safe"]:
-                            # Tool output contains sensitive data - block it
-                            threat_summary = ", ".join(tool_scan["threats"]) if tool_scan["threats"] else "Sensitive data detected"
-                            error_msg = f"🚨 [STAGE: TOOL OUTPUT] Security threat detected in query results\n\nTool: query_database\nThreats: {threat_summary}\nRisk Level: {tool_scan['risk_level'].upper()}\n\nThe database query returned data flagged as potentially unsafe. This may indicate an attempt to extract sensitive information."
-                            logger.warning(f"Unsafe tool output blocked at query_database stage: {threat_summary}")
-                            return {
-                                "assistant_message": error_msg,
-                                "tools_used": ["query_database"],
-                                "tool_outputs": tool_outputs,
-                                "stop_reason": "security_block",
-                                "error": error_msg,
-                                "prisma_airs_user_safe": prisma_airs_user_safe,
-                                "prisma_airs_response_safe": False,
-                            }
-                    else:
-                        logger.info("Tool output scan skipped (Prisma AIRS disabled)")
-
-                    # Parse and format using generic formatter
-                    try:
-                        data = json.loads(result)
-
-                        if not data:
-                            no_match_msg = f"No customers found matching '{customer_name}'." if customer_name else "No customers found."
-                            return {
-                                "assistant_message": no_match_msg,
-                                "tools_used": ["query_database"],
-                                "tool_outputs": tool_outputs,
-                                "stop_reason": "tool_use",
-                                "error": None,
-                                "prisma_airs_user_safe": prisma_airs_user_safe,
-                                "prisma_airs_response_safe": True,
-                            }
-
-                        # Use generic formatter for consistency
-                        formatted_data = self._format_json_data(data)
-                        formatted_message = f"Here is the credit card information for {result_text}:\n\n{formatted_data}"
-
-                    except Exception as parse_err:
-                        logger.warning("Failed to parse credit card query result: %s", parse_err)
-                        formatted_message = f"Here is the credit card information for {result_text}:\n\n{result}"
-
-                    return {
-                        "assistant_message": formatted_message,
-                        "tools_used": ["query_database"],
-                        "tool_outputs": tool_outputs,
-                        "stop_reason": "tool_use",
-                        "error": None,
-                        "prisma_airs_user_safe": prisma_airs_user_safe,
-                        "prisma_airs_response_safe": True,
-                    }
-                except Exception as e:
-                    logger.warning("Direct credit card query failed: %s", e)
-                    # Fall through to normal LLM processing
+            # Note: credit-card queries are intentionally NOT special-cased. They
+            # flow through the normal agentic loop like every other query, so the
+            # model interprets the tool output and all Prisma AIRS scan stages apply.
 
             # Get the appropriate provider
             provider = get_provider(self.llm_provider_name, self.config, self.db_config)
 
             # Send message through provider
             response = provider.chat(user_message, AVAILABLE_TOOLS)
+
+            # Surface provider-level blocks/errors directly and skip our own scans.
+            # Two cases:
+            #  1) security_block — the provider already blocked (e.g. Portkey's AIRS
+            #     guardrail returned a 446). Re-scanning the block message could itself
+            #     trip a detection, so we return it verbatim.
+            #  2) a hard error with an empty message (404, network) — don't scan empty
+            #     content (Prisma AIRS rejects it with HTTP 400 -> false SCANNING_UNAVAILABLE).
+            is_security_block = response.stop_reason == "security_block"
+            if is_security_block or (response.error and not (response.assistant_message or "").strip()):
+                logger.warning("Provider block/error, skipping our scans: %s", response.error)
+                # Prefer the (friendly) assistant message; fall back to the raw error.
+                msg = (response.assistant_message or "").strip() or response.error or "Request blocked."
+                return {
+                    "assistant_message": msg,
+                    "tools_used": response.tools_used,
+                    "tool_outputs": response.tool_outputs or {},
+                    "stop_reason": response.stop_reason,
+                    "error": response.error,
+                    "prisma_airs_user_safe": prisma_airs_user_safe,
+                    "prisma_airs_response_safe": False if is_security_block else prisma_airs_response_safe,
+                }
 
             # SECURITY: Scan tool outputs with Prisma AIRS (if enabled)
             tool_outputs = response.tool_outputs or {}

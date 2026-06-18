@@ -10,8 +10,7 @@ import InsightsAlerts from './widgets/InsightsAlerts';
 import ActivityFeed from './widgets/ActivityFeed';
 import PerformanceMetrics from './widgets/PerformanceMetrics';
 import ChatBot from './ChatBot';
-import ChatbotInfoBox from './ChatbotInfoBox';
-import PrismaAirsToggle from './PrismaAirsToggle';
+import GatewayModelBox from './GatewayModelBox';
 
 interface DashboardGridProps {
   healthData: any;
@@ -40,7 +39,6 @@ export default function DashboardGrid({
   const [isEditMode, setIsEditMode] = useState(false);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [rowHeight, setRowHeight] = useState(250);
-  const [prismaAirsEnabled, setPrismaAirsEnabled] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const metricsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -258,25 +256,17 @@ export default function DashboardGrid({
         </div>
       )}
 
-      {/* Chatbot Tab - With Info Box */}
+      {/* Chatbot Tab - Centered column: top bar (gateway/model + controls) above, chat below */}
       {activeTab === 'chatbot' && (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="p-6 flex gap-6 flex-1 min-h-0">
-            {/* Chatbot - Takes 70% of space */}
-            <div className="flex-1 min-w-0">
-              <ChatBot />
+          <div className="p-6 flex flex-col gap-4 flex-1 min-h-0 w-full max-w-[67.2rem] mx-auto">
+            {/* Top bar: gateway/model info */}
+            <div className="flex items-center gap-4 flex-wrap flex-shrink-0">
+              <GatewayModelBox />
             </div>
-            {/* Info Box and Controls - Takes 30% of space */}
-            <div className="w-56 flex-shrink-0 flex flex-col gap-4 min-h-0">
-              {/* Prisma AIRS Toggle Button */}
-              <PrismaAirsToggle
-                enabled={prismaAirsEnabled}
-                onToggle={setPrismaAirsEnabled}
-              />
-              {/* Info Box */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <ChatbotInfoBox />
-              </div>
+            {/* Chatbot fills the remaining space within the centered column */}
+            <div className="flex-1 min-h-0">
+              <ChatBot />
             </div>
           </div>
         </div>

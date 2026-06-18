@@ -120,6 +120,21 @@ export default function App() {
     setAuthenticated(true);
   };
 
+  // Browser tab: keep "Sign In" (neutral) on the auth page; show the SELECTer
+  // name + logo only after login so the brand isn't exposed on the public login page.
+  useEffect(() => {
+    document.title = authenticated ? 'SELECTer' : 'Sign In';
+
+    let icon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!icon) {
+      icon = document.createElement('link');
+      icon.rel = 'icon';
+      document.head.appendChild(icon);
+    }
+    icon.type = 'image/svg+xml';
+    icon.href = authenticated ? '/selecter.svg' : '/vite.svg';
+  }, [authenticated]);
+
   const refreshHealth = useCallback(async () => {
     const data = await fetchHealth();
     if (data) setHealthData(data);

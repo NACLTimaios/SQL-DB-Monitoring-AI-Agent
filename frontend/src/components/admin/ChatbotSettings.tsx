@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { client } from '../../utils/api';
+import PrismaAirsToggle from '../PrismaAirsToggle';
 
 interface ChatbotConfig {
   llm_provider: string;
@@ -14,6 +15,7 @@ interface ChatbotConfig {
     restricted_tables: string[];
   };
   enabled: boolean;
+  prisma_airs_enabled?: boolean;
 }
 
 interface AvailableTools {
@@ -211,6 +213,20 @@ export default function ChatbotSettings() {
             </label>
           </div>
         </div>
+      </div>
+
+      {/* Security: legacy direct Prisma AIRS integration */}
+      <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-6">
+        <h2 className="text-xl font-semibold text-white mb-1">AI Security (Prisma AIRS)</h2>
+        <p className="text-sm text-slate-400 mb-4">
+          AIRS scanning is now handled by the Portkey gateway. This switch controls the
+          legacy <span className="text-slate-300">direct</span> integration only and is
+          normally kept <span className="text-slate-300">off</span> to avoid double-scanning.
+        </p>
+        <PrismaAirsToggle
+          enabled={!!config.prisma_airs_enabled}
+          onToggle={(v) => setConfig(config ? { ...config, prisma_airs_enabled: v } : config)}
+        />
       </div>
 
       {/* System Prompt */}
