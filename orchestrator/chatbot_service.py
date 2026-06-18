@@ -13,6 +13,10 @@ from orchestrator.monitoring_tools import (
     get_performance_schema,
     execute_remediation,
 )
+# Prisma AIRS security scanning — imported once at module load (no circular dep:
+# prisma_airs only depends on stdlib + requests). Every prompt sent to the model
+# (user or tool output) and every model response is scanned via these.
+from api.prisma_airs import scan_prompt, scan_response
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +26,32 @@ DEFAULT_SYSTEM_PROMPT = """You are a database assistant for the 'shopdb' Postgre
 ## Your Job
 Answer database questions. Run queries. Check performance. Suggest fixes.
 
-## Database Tables
-- customers: id, name, email, credit_card_number, created_at
-- products: product_id, name, category, price, stock, created_at
-- orders: id, customer_id, product_id, quantity, total, created_at
-  (orders table has line items directly, NOT a separate order_items table)
+## Database Tables - EXACT SCHEMA
+
+### customers
+- id: INTEGER (primary key)
+- name: VARCHAR (customer name)
+- email: VARCHAR (email address)
+- credit_card_number: VARCHAR (test data - safe to query)
+- created_at: TIMESTAMP WITH TIME ZONE
+
+### products
+- product_id: INTEGER (primary key)
+- name: VARCHAR (product name)
+- category: VARCHAR (product category)
+- price: NUMERIC (product price)
+- stock: INTEGER (available stock)
+- created_at: TIMESTAMP WITH TIME ZONE
+
+### orders
+- id: INTEGER (primary key - use 'id' NOT 'order_id')
+- customer_id: INTEGER (foreign key to customers.id)
+- product_id: INTEGER (foreign key to products.product_id)
+- quantity: INTEGER (number of items ordered)
+- total: NUMERIC (order total price)
+- created_at: TIMESTAMP WITH TIME ZONE
+
+⚠️ IMPORTANT: When querying orders, use 'o.id' NOT 'o.order_id'
 
 ## Available Tools - Use ONE at a time:
 
@@ -650,7 +675,7 @@ class ChatbotService:
             user_message: User's chat message
 
         Returns:
-            Dict with assistant_message, tools_used, and execution_details
+            Dict with assistant_message, tools_used, tool_outputs, and scan results
         """
         try:
             from orchestrator.llm_providers import get_provider
@@ -658,23 +683,30 @@ class ChatbotService:
 
             # SECURITY: Scan prompt FIRST with Prisma AIRS before any processing (if enabled)
             prisma_airs_enabled = self.config.get("prisma_airs_enabled", True)
+            prisma_airs_user_safe = True
+            prisma_airs_response_safe = True
 
             if prisma_airs_enabled:
-                from api.prisma_airs import scan_prompt
                 scan_result = scan_prompt(user_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+                prisma_airs_user_safe = scan_result["safe"]
+                logger.info(f"User prompt scan: safe={scan_result['safe']}, risk_level={scan_result['risk_level']}, threats={scan_result['threats']}")
             else:
                 scan_result = {"safe": True, "risk_level": "low", "threats": [], "confidence": 1.0, "error": None}
+                logger.info("User prompt scan skipped (Prisma AIRS disabled)")
 
             if not scan_result["safe"]:
                 # Threat detected - block the request
                 threat_summary = ", ".join(scan_result["threats"]) if scan_result["threats"] else "Unknown threat"
-                error_msg = f"Request blocked by security scanner: {threat_summary} (Risk: {scan_result['risk_level']})"
-                logger.warning(f"Security threat blocked: {error_msg}")
+                error_msg = f"🚨 [STAGE: USER PROMPT] Security threat detected and blocked\n\nThreats: {threat_summary}\nRisk Level: {scan_result['risk_level'].upper()}\n\nYour input was flagged as potentially unsafe by Prisma AIRS security scanning. Please rephrase your question."
+                logger.warning(f"Security threat blocked at user prompt stage: {threat_summary}")
                 return {
                     "assistant_message": error_msg,
                     "tools_used": [],
+                    "tool_outputs": {},
                     "stop_reason": "security_block",
                     "error": error_msg,
+                    "prisma_airs_user_safe": False,
+                    "prisma_airs_response_safe": True,
                 }
 
             # Special handling for credit card queries (bypass Claude's safety constraints)
@@ -710,6 +742,28 @@ class ChatbotService:
 
                     result = _execute_query_database(self.db_config, {"query": query, "params": query_params, "limit": limit}, self.guardrails)
 
+                    # SECURITY: Scan tool output (credit card data) with Prisma AIRS
+                    tool_outputs = {"query_database": result}
+                    if prisma_airs_enabled:
+                        tool_scan = scan_response(result, model=self.config.get("llm_model", "gemini-2.5-pro"))
+                        logger.info(f"Tool output scan (query_database): safe={tool_scan['safe']}, risk_level={tool_scan['risk_level']}, threats={tool_scan['threats']}")
+                        if not tool_scan["safe"]:
+                            # Tool output contains sensitive data - block it
+                            threat_summary = ", ".join(tool_scan["threats"]) if tool_scan["threats"] else "Sensitive data detected"
+                            error_msg = f"🚨 [STAGE: TOOL OUTPUT] Security threat detected in query results\n\nTool: query_database\nThreats: {threat_summary}\nRisk Level: {tool_scan['risk_level'].upper()}\n\nThe database query returned data flagged as potentially unsafe. This may indicate an attempt to extract sensitive information."
+                            logger.warning(f"Unsafe tool output blocked at query_database stage: {threat_summary}")
+                            return {
+                                "assistant_message": error_msg,
+                                "tools_used": ["query_database"],
+                                "tool_outputs": tool_outputs,
+                                "stop_reason": "security_block",
+                                "error": error_msg,
+                                "prisma_airs_user_safe": prisma_airs_user_safe,
+                                "prisma_airs_response_safe": False,
+                            }
+                    else:
+                        logger.info("Tool output scan skipped (Prisma AIRS disabled)")
+
                     # Parse and format using generic formatter
                     try:
                         data = json.loads(result)
@@ -719,8 +773,11 @@ class ChatbotService:
                             return {
                                 "assistant_message": no_match_msg,
                                 "tools_used": ["query_database"],
+                                "tool_outputs": tool_outputs,
                                 "stop_reason": "tool_use",
                                 "error": None,
+                                "prisma_airs_user_safe": prisma_airs_user_safe,
+                                "prisma_airs_response_safe": True,
                             }
 
                         # Use generic formatter for consistency
@@ -734,8 +791,11 @@ class ChatbotService:
                     return {
                         "assistant_message": formatted_message,
                         "tools_used": ["query_database"],
+                        "tool_outputs": tool_outputs,
                         "stop_reason": "tool_use",
                         "error": None,
+                        "prisma_airs_user_safe": prisma_airs_user_safe,
+                        "prisma_airs_response_safe": True,
                     }
                 except Exception as e:
                     logger.warning("Direct credit card query failed: %s", e)
@@ -747,23 +807,59 @@ class ChatbotService:
             # Send message through provider
             response = provider.chat(user_message, AVAILABLE_TOOLS)
 
+            # SECURITY: Scan tool outputs with Prisma AIRS (if enabled)
+            tool_outputs = response.tool_outputs or {}
+            tools_safe = True
+
+            if prisma_airs_enabled and tool_outputs:
+                for tool_name, tool_output in tool_outputs.items():
+                    tool_scan = scan_response(tool_output, model=self.config.get("llm_model", "gemini-2.5-pro"))
+                    logger.info(f"Tool output scan ({tool_name}): safe={tool_scan['safe']}, risk_level={tool_scan['risk_level']}, threats={tool_scan['threats']}")
+                    if not tool_scan["safe"]:
+                        tools_safe = False
+                        threat_summary = ", ".join(tool_scan["threats"]) if tool_scan["threats"] else "Sensitive data detected"
+                        logger.warning(f"Unsafe tool output detected in {tool_name}: {threat_summary}")
+                        break  # Stop scanning after first unsafe output
+            elif prisma_airs_enabled and tool_outputs:
+                logger.info(f"Tool output scan skipped for {len(tool_outputs)} tools (Prisma AIRS disabled)")
+
+            if not tools_safe:
+                # Tool output contains unsafe content - block the response
+                threat_summary = ", ".join(tool_scan["threats"]) if tool_scan["threats"] else "Sensitive data in tool output"
+                error_msg = f"🚨 [STAGE: TOOL OUTPUT] Security threat detected in tool results\n\nTool: {tool_name}\nThreats: {threat_summary}\nRisk Level: {tool_scan['risk_level'].upper()}\n\nThe tool returned data flagged as potentially unsafe. The response has been blocked to protect sensitive information."
+                logger.warning(f"Unsafe tool output blocked at {tool_name} stage: {threat_summary}")
+                return {
+                    "assistant_message": error_msg,
+                    "tools_used": response.tools_used,
+                    "tool_outputs": tool_outputs,
+                    "stop_reason": "security_block",
+                    "error": error_msg,
+                    "prisma_airs_user_safe": prisma_airs_user_safe,
+                    "prisma_airs_response_safe": False,
+                }
+
             # SECURITY: Scan LLM response to detect data leakage or malicious output (if enabled)
             if prisma_airs_enabled:
-                from api.prisma_airs import scan_response
                 response_scan = scan_response(response.assistant_message, model=self.config.get("llm_model", "gemini-2.5-pro"))
+                prisma_airs_response_safe = response_scan["safe"]
+                logger.info(f"LLM response scan: safe={response_scan['safe']}, risk_level={response_scan['risk_level']}, threats={response_scan['threats']}")
             else:
                 response_scan = {"safe": True, "risk_level": "low", "threats": [], "confidence": 1.0, "error": None}
+                logger.info("LLM response scan skipped (Prisma AIRS disabled)")
 
             if not response_scan["safe"]:
                 # LLM generated unsafe content - block it
                 threat_summary = ", ".join(response_scan["threats"]) if response_scan["threats"] else "Unsafe content detected"
-                error_msg = f"Response blocked by security scanner: {threat_summary} (Risk: {response_scan['risk_level']})"
-                logger.warning(f"Unsafe LLM output blocked: {error_msg}")
+                error_msg = f"🚨 [STAGE: MODEL RESPONSE] Security threat detected in AI response\n\nThreats: {threat_summary}\nRisk Level: {response_scan['risk_level'].upper()}\n\nThe model's response was flagged as potentially unsafe before being sent to you. The response has been blocked to protect against data leakage or malicious content."
+                logger.warning(f"Unsafe LLM output blocked at model response stage: {threat_summary}")
                 return {
                     "assistant_message": error_msg,
                     "tools_used": response.tools_used,
+                    "tool_outputs": tool_outputs,
                     "stop_reason": "security_block",
                     "error": error_msg,
+                    "prisma_airs_user_safe": prisma_airs_user_safe,
+                    "prisma_airs_response_safe": False,
                 }
 
             # Clean the message to remove tool execution details
@@ -772,8 +868,11 @@ class ChatbotService:
             return {
                 "assistant_message": cleaned_message,
                 "tools_used": response.tools_used,
+                "tool_outputs": tool_outputs,
                 "stop_reason": response.stop_reason,
                 "error": response.error,
+                "prisma_airs_user_safe": prisma_airs_user_safe,
+                "prisma_airs_response_safe": prisma_airs_response_safe,
             }
 
         except ValueError as e:
@@ -781,12 +880,18 @@ class ChatbotService:
             return {
                 "assistant_message": "",
                 "tools_used": [],
+                "tool_outputs": {},
                 "error": str(e),
+                "prisma_airs_user_safe": prisma_airs_user_safe,
+                "prisma_airs_response_safe": prisma_airs_response_safe,
             }
         except Exception as e:
             logger.error("Chatbot error: %s", e, exc_info=True)
             return {
                 "assistant_message": "",
                 "tools_used": [],
+                "tool_outputs": {},
                 "error": str(e),
+                "prisma_airs_user_safe": prisma_airs_user_safe,
+                "prisma_airs_response_safe": prisma_airs_response_safe,
             }

@@ -1,8 +1,41 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../utils/api';
 import ChatbotSettings from '../components/admin/ChatbotSettings';
 import UserManagement from '../components/admin/UserManagement';
+
+// Error boundary for admin tab content
+class TabErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Admin tab error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 text-red-400">
+          <p className="font-semibold mb-2">❌ An error occurred</p>
+          <p className="text-sm">{this.state.error?.message || 'Unknown error'}</p>
+          <p className="text-xs text-red-300 mt-2">Please refresh the page to try again.</p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface UserInfo {
   id: number;
@@ -150,11 +183,13 @@ export default function AdminPageTabbed() {
 
         {/* Tab Content */}
         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-          {activeTab === 'chatbot' ? (
-            <ChatbotSettings />
-          ) : (
-            <UserManagement />
-          )}
+          <TabErrorBoundary>
+            {activeTab === 'chatbot' ? (
+              <ChatbotSettings />
+            ) : (
+              <UserManagement />
+            )}
+          </TabErrorBoundary>
         </div>
       </div>
     </div>

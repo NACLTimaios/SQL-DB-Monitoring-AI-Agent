@@ -57,6 +57,19 @@ export default function UserManagement() {
     setError('');
     setSuccess('');
 
+    // Validate inputs
+    if (!formData.username.trim()) {
+      setError('Username is required');
+      setCreating(false);
+      return;
+    }
+
+    if (!formData.password.trim()) {
+      setError('Password is required');
+      setCreating(false);
+      return;
+    }
+
     try {
       const response = await client.post('/users', formData);
 
@@ -69,7 +82,22 @@ export default function UserManagement() {
         setActiveSubTab('view');
       }, 1500);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create user');
+      console.error('User creation error:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+      });
+      const detail = err.response?.data?.detail || err.message || 'Failed to create user';
+      // Provide helpful error messages
+      if (detail.includes('Password')) {
+        setError(`Password requirement: ${detail}`);
+      } else if (detail.includes('Username')) {
+        setError(`Username requirement: ${detail}`);
+      } else if (detail.includes('already exists')) {
+        setError(`Username already taken: ${detail}`);
+      } else {
+        setError(detail);
+      }
     } finally {
       setCreating(false);
     }
@@ -234,6 +262,9 @@ export default function UserManagement() {
                 disabled={creating}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
               />
+              <p className="text-xs text-slate-400 mt-2">
+                🔒 Password must contain: 12+ chars, uppercase, lowercase, digit, special char (!@#$%^&* etc)
+              </p>
             </div>
 
             <div>

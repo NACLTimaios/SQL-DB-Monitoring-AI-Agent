@@ -18,11 +18,13 @@ class ProviderResponse:
         tools_used: list[str],
         stop_reason: str = "end_turn",
         error: Optional[str] = None,
+        tool_outputs: Optional[dict] = None,
     ):
         self.assistant_message = assistant_message
         self.tools_used = tools_used
         self.stop_reason = stop_reason
         self.error = error
+        self.tool_outputs = tool_outputs or {}
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +32,7 @@ class ProviderResponse:
             "tools_used": self.tools_used,
             "stop_reason": self.stop_reason,
             "error": self.error,
+            "tool_outputs": self.tool_outputs,
         }
 
 
@@ -93,6 +96,7 @@ class AnthropicProvider(LLMProvider):
                 assistant_message="",
                 tools_used=[],
                 error="ANTHROPIC_API_KEY not configured",
+                tool_outputs={},
             )
 
         try:
@@ -104,6 +108,7 @@ class AnthropicProvider(LLMProvider):
             # Initialize message list
             messages = [{"role": "user", "content": user_message}]
             tools_used = []
+            tool_outputs = {}
 
             # Agentic loop - keep calling until model stops using tools
             max_iterations = 10
@@ -133,6 +138,7 @@ class AnthropicProvider(LLMProvider):
                         assistant_message=final_message.strip(),
                         tools_used=tools_used,
                         stop_reason=response.stop_reason,
+                        tool_outputs=tool_outputs,
                     )
 
                 # Process tool calls
@@ -144,15 +150,41 @@ class AnthropicProvider(LLMProvider):
                     tool_results = []
                     for block in response.content:
                         if block.type == "tool_use":
-                            tools_used.append(block.name)
+                            if block.name not in tools_used:
+                                tools_used.append(block.name)
                             tool_result = self._execute_tool(block.name, block.input)
+                            tool_outputs[block.name] = tool_result
+
+                            # SECURITY: Scan tool output with Prisma AIRS BEFORE sending to LLM
+                            import os
+                            prisma_airs_enabled = os.environ.get("PRISMA_AIRS_API_KEY") and os.environ.get("PRISMA_AIRS_PROFILE_ID")
+
+                            if prisma_airs_enabled:
+                                from api.prisma_airs import scan_response
+                                tool_scan = scan_response(tool_result, model=self.model)
+                                logger.info(f"Tool output scan ({block.name}): safe={tool_scan['safe']}, risk_level={tool_scan['risk_level']}, threats={tool_scan['threats']}")
+
+                                if not tool_scan["safe"]:
+                                    # Unsafe tool output - STOP processing immediately
+                                    threat_summary = ", ".join(tool_scan["threats"]) if tool_scan["threats"] else "Sensitive data detected"
+                                    error_msg = f"🚨 [STAGE: TOOL OUTPUT] Security threat detected in {block.name} results\n\nThreats: {threat_summary}\nRisk Level: {tool_scan['risk_level'].upper()}\n\nThe tool returned data flagged as unsafe. Processing stopped to prevent data leakage."
+                                    logger.warning(f"SECURITY: Unsafe tool output blocked in {block.name}: {threat_summary}")
+                                    return ProviderResponse(
+                                        assistant_message="",
+                                        tools_used=tools_used,
+                                        stop_reason="security_block",
+                                        error=error_msg,
+                                        tool_outputs=tool_outputs,
+                                    )
+
+                            # Safe to send to LLM
                             tool_results.append({
                                 "type": "tool_result",
                                 "tool_use_id": block.id,
                                 "content": tool_result,
                             })
 
-                    # Add tool results as user message
+                    # Add tool results as user message (only if all scans passed)
                     if tool_results:
                         messages.append({"role": "user", "content": tool_results})
                 else:
@@ -166,6 +198,7 @@ class AnthropicProvider(LLMProvider):
                         assistant_message=final_message.strip(),
                         tools_used=tools_used,
                         stop_reason=response.stop_reason,
+                        tool_outputs=tool_outputs,
                     )
 
             # Max iterations reached
@@ -173,6 +206,7 @@ class AnthropicProvider(LLMProvider):
                 assistant_message="",
                 tools_used=tools_used,
                 error="Max tool use iterations reached",
+                tool_outputs=tool_outputs,
             )
 
         except ImportError:
@@ -180,6 +214,7 @@ class AnthropicProvider(LLMProvider):
                 assistant_message="",
                 tools_used=[],
                 error="Anthropic SDK not installed. Install with: pip install anthropic",
+                tool_outputs={},
             )
         except Exception as e:
             logger.error("Anthropic API error: %s", e, exc_info=True)
@@ -187,6 +222,7 @@ class AnthropicProvider(LLMProvider):
                 assistant_message="",
                 tools_used=[],
                 error=str(e),
+                tool_outputs={},
             )
 
     def _build_claude_tools(self, available_tools: dict) -> list:
@@ -561,11 +597,120 @@ class PrismaAIProvider(LLMProvider):
         return tools
 
 
+class PortkeyProvider(LLMProvider):
+    """Portkey AI Gateway provider - OpenAI-compatible API gateway.
+
+    Portkey routes requests to configured models through their gateway.
+    Supports routing to multiple LLM providers (OpenAI, Google, Anthropic, etc.)
+    """
+
+    def chat(self, user_message: str, available_tools: dict) -> ProviderResponse:
+        """Send message through Portkey AI Gateway."""
+        api_key = os.environ.get("PORTKEY_API_KEY")
+        if not api_key:
+            return ProviderResponse(
+                assistant_message="",
+                tools_used=[],
+                error="PORTKEY_API_KEY not configured",
+            )
+
+        try:
+            from portkey_ai import Portkey
+
+            portkey = Portkey(api_key=api_key)
+
+            # Build OpenAI-compatible function calling schema
+            tools_schema = self._build_portkey_tools(available_tools)
+
+            # Call Portkey with function calling
+            response = portkey.chat.completions.create(
+                model=self.model,
+                max_tokens=4096,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                tools=tools_schema if tools_schema else None,
+                tool_choice="auto" if tools_schema else None,
+            )
+
+            assistant_message = ""
+            tools_used = []
+            tool_outputs = {}
+
+            # Process response
+            if response.choices and response.choices[0].message:
+                message = response.choices[0].message
+                if message.content:
+                    assistant_message = message.content
+
+                # Handle tool calls
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    for tool_call in message.tool_calls:
+                        tool_name = tool_call.function.name
+                        tools_used.append(tool_name)
+                        # Parse parameters from JSON
+                        params = json.loads(tool_call.function.arguments)
+                        tool_result = self._execute_tool(tool_name, params)
+                        # SECURITY: Capture raw tool output so chatbot_service can
+                        # scan it with Prisma AIRS (Stage 2 - tool output scanning)
+                        # before it is surfaced. Without this, the dedicated tool
+                        # output scan stage is bypassed.
+                        tool_outputs[tool_name] = tool_result
+                        assistant_message += f"\n[Executed {tool_name}]\n{tool_result}\n"
+
+            return ProviderResponse(
+                assistant_message=assistant_message,
+                tools_used=tools_used,
+                stop_reason=response.choices[0].finish_reason if response.choices else "stop",
+                tool_outputs=tool_outputs,
+            )
+
+        except ImportError:
+            return ProviderResponse(
+                assistant_message="",
+                tools_used=[],
+                error="Portkey SDK not installed. Install with: pip install portkey-ai",
+            )
+        except Exception as e:
+            logger.error("Portkey API error: %s", e, exc_info=True)
+            return ProviderResponse(
+                assistant_message="",
+                tools_used=[],
+                error=str(e),
+            )
+
+    def _build_portkey_tools(self, available_tools: dict) -> list:
+        """Build OpenAI-compatible function calling schema for Portkey."""
+        tools = []
+        for tool_name in self.tools:
+            if tool_name in available_tools:
+                tool_def = available_tools[tool_name]
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "description": tool_def["description"],
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    param: {"type": "string"}
+                                    for param in tool_def["parameters"].keys()
+                                },
+                                "required": [],
+                            },
+                        },
+                    }
+                )
+        return tools
+
+
 def get_provider(llm_provider: str, config: dict, db_config: dict) -> LLMProvider:
     """Factory function to get the appropriate LLM provider.
 
     Args:
-        llm_provider: Provider name ("anthropic", "google", "openai", "prisma")
+        llm_provider: Provider name ("anthropic", "google", "openai", "prisma", "portkey")
         config: Provider configuration
         db_config: Database configuration
 
@@ -580,6 +725,7 @@ def get_provider(llm_provider: str, config: dict, db_config: dict) -> LLMProvide
         "google": GoogleProvider,
         "openai": OpenAIProvider,
         "prisma": PrismaAIProvider,
+        "portkey": PortkeyProvider,
     }
 
     if llm_provider not in providers:

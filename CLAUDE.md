@@ -245,12 +245,240 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ---
 
+## Prisma AIRS Security Implementation (Completed June 2026)
+
+### Three-Stage Scanning Pipeline
+
+All data exchanges in the chatbot now go through Prisma AIRS scanning for security threats:
+
+**Stage 1: User Prompt Scanning** (`orchestrator/chatbot_service.py` lines 662-678)
+- Scans user input BEFORE any processing
+- Detects: prompt injection, jailbreaks, prompt theft
+- If blocked: LLM never called, error returned immediately
+
+**Stage 2: Tool Output Scanning** (`orchestrator/chatbot_service.py` lines 733-758, 808-844)
+- Scans database query results BEFORE LLM processes them
+- Detects: credit card numbers, passwords, PII in tool results
+- If blocked: LLM never receives the unscanned data, error returned
+- Happens TWICE for redundancy:
+  1. Immediate scan after tool execution (line 733-758)
+  2. Second scan before sending to LLM agentic loop (line 808-844)
+
+**Stage 3: Response Scanning** (`orchestrator/chatbot_service.py` lines 826-844)
+- Scans LLM output BEFORE returning to user
+- Detects: accidental data leakage, malicious code
+- If blocked: Safe error returned instead of response
+
+### Key Implementation Files
+
+- **`api/prisma_airs.py`** — Core security module
+  - `is_prisma_airs_enabled()` — Checks both API key AND profile are set
+  - `_scan()` — Core scanning function with fail-closed error handling
+  - `_safe_result()` — Returns `safe=False` on ANY error (fail-closed design)
+  - `_ai_profile()` — Prefers profile_name over profile_id for reliability
+
+- **`orchestrator/chatbot_service.py`** — Orchestrates three-stage scanning
+  - Three independent `scan_response()` calls at each stage
+  - Detailed [STAGE: X] labels in error messages
+  - Returns `prisma_airs_user_safe` and `prisma_airs_response_safe` flags
+
+- **`orchestrator/llm_providers.py`** — Provider-specific scanning
+  - `AnthropicProvider.chat()` (lines 144-191) — Tool output scanning in agentic loop
+  - After each tool execution, immediate scan before LLM sees results
+  - If unsafe: returns `security_block` stop_reason without calling LLM
+
+- **`store/chatbot_models.py`** — Database persistence
+  - `ChatMessage.tool_outputs` — JSON field storing raw tool results
+  - `ChatMessage.prisma_airs_user_safe` — Scan result for user input
+  - `ChatMessage.prisma_airs_response_safe` — Scan result for response
+  - `ChatbotConfig.prisma_airs_enabled` — Enable/disable toggle (for demo)
+
+- **`api/server.py`** — API persistence
+  - Line 900-902: Stores all three security flags in database
+  - Uses actual scan results, not inferred from stop_reason
+
+### Critical Design Decisions
+
+1. **Fail-Closed, Not Fail-Safe**
+   - If Prisma AIRS API is unavailable → ALL requests are BLOCKED
+   - This prevents silent data leakage when security scanning breaks
+   - Previous fail-safe approach allowed data to leak silently
+
+2. **Profile Name Priority**
+   - Changed `_ai_profile()` to prefer `PRISMA_AIRS_PROFILE_NAME` over ID
+   - Profile IDs become invalid when profiles are renamed/recreated
+   - Profile names are stable and human-readable
+
+3. **Immediate Tool Output Scanning**
+   - Tool results are scanned BEFORE LLM processes them
+   - Prevents unscanned sensitive data from reaching the LLM
+   - Second scan occurs in agentic loop for redundancy
+
+4. **Database Schema in System Prompt**
+   - Updated system prompt with exact table definitions
+   - Includes critical note about using `o.id` not `o.order_id` in orders table
+   - Prevents database errors and confusing agent behavior
+
+### Frontend Changes
+
+- **`frontend/src/components/ChatbotInfoBox.tsx`** — Removed security section
+  - Removed: 🔒 Security header
+  - Removed: "Prisma AIRS: ✅ Enabled" status
+  - Removed: "Scanning prompts and responses" message
+  - Retained: Model info, Available Tools, Admin Settings note
+  - Security is configured server-side and operates transparently
+
+- **`frontend/src/components/DashboardGrid.tsx`** — Tab navigation
+  - Three tabs: Metrics, Assistant, Agent Health
+  - Assistant tab shows ChatBot + ChatbotInfoBox
+
+### Deployment Status
+
+- **Frontend deployed to arm2** at `/var/www/dashboard/` (June 16, 2026, 20:07 UTC)
+- All frontend assets updated, nginx reloaded
+- Users should clear cache and refresh to see updated UI
+
+## Chat History Privacy Implementation (Completed June 17, 2026)
+
+### Problem
+Users could see chat messages from other users, creating a **data leakage vulnerability**. Different users were viewing the same shared chat history.
+
+### Solution
+Implemented per-user chat history isolation using the authenticated username.
+
+### Changes
+- **store/chatbot_models.py:41** — Added `username` field to ChatMessage model
+- **api/server.py:867** — POST /api/chatbot/chat now saves username
+- **api/server.py:918** — GET /api/chatbot/history filters by current user
+- **api/server.py:940** — DELETE /api/chatbot/history deletes only current user's messages
+
+### How It Works
+1. User authenticates with JWT token (contains username)
+2. Message is saved with `username` field
+3. When retrieving history: only show messages WHERE `username == current_user`
+4. Old messages without username (from before update) are hidden
+
+### Security Impact
+**Before:** All users see all chat messages → Data leakage
+**After:** Each user sees only their messages → Complete privacy isolation
+
+### Backward Compatibility
+- Old messages with `username = NULL` are hidden (not shown in history)
+- No migration needed, schema handles nullable username field
+- New messages automatically include username
+
+## Portkey AI Gateway Integration (Completed June 18, 2026)
+
+### Overview
+Integrated Portkey AI Gateway as a new LLM provider option. Users can now route requests through Portkey's unified API gateway instead of calling LLM providers directly.
+
+### What Is Portkey?
+Portkey is an AI API gateway that:
+- Routes requests to multiple LLM providers (OpenAI, Google, Anthropic, etc.)
+- Provides load balancing, caching, retries, and analytics
+- Requires only a single API key (PORTKEY_API_KEY)
+- Uses routing syntax like `@geminiapi/gemini-2.5-flash`
+
+### Implementation Files
+
+**Backend Changes:**
+- **orchestrator/llm_providers.py:599** — Added `PortkeyProvider` class (100+ lines)
+  - Implements OpenAI-compatible chat completions
+  - Uses `portkey_ai` SDK
+  - Supports tool calling same as other providers
+  - Added to `get_provider()` factory function
+
+- **api/server.py:995** — Added Portkey routes to `/api/chatbot/models`
+  - Routes: `@geminiapi/*`, `@openaiapi/*`, `@anthropicapi/*`
+  - Users can select from dropdown in Admin Settings
+
+- **requirements.txt** — Added `portkey-ai==0.1.0`
+
+**Frontend Changes:**
+- **frontend/src/components/admin/ChatbotSettings.tsx:142** — Added "🔀 Portkey AI Gateway" option
+- **frontend/src/components/ChatbotInfoBox.tsx:100+** — Shows "🔀 Gateway" and Portkey info when selected
+  - Displays: "Configured via PORTKEY_API_KEY environment variable"
+  - Shows the selected route (e.g., `@geminiapi/gemini-2.5-flash`)
+
+### How It Works
+
+1. **User sets PORTKEY_API_KEY environment variable**
+   ```bash
+   export PORTKEY_API_KEY="pk_..."
+   ```
+
+2. **User selects Portkey in Admin Settings**
+   - Provider: 🔀 Portkey AI Gateway
+   - Route: @geminiapi/gemini-2.5-flash (or other)
+   - Clicks Save
+
+3. **Chat message flows through Portkey**
+   - User message → API → PortkeyProvider
+   - PortkeyProvider creates Portkey client with API key
+   - Sends request to Portkey API with selected route
+   - Portkey routes to actual provider (Google/OpenAI/Anthropic)
+   - Response returned to user
+
+### Configuration
+
+**Required environment variable:**
+```bash
+PORTKEY_API_KEY=pk_your_portkey_key
+```
+
+**Can be set via:**
+- .env file: `echo 'PORTKEY_API_KEY=pk_...' >> .env`
+- Environment: `export PORTKEY_API_KEY="pk_..."`
+- Systemd service: `Environment="PORTKEY_API_KEY=..."`
+
+### Available Routes
+
+Default routes configured (can be extended):
+- `@geminiapi/gemini-2.5-flash` — Google Gemini Flash (fast + cheap)
+- `@geminiapi/gemini-2.5-pro` — Google Gemini Pro
+- `@openaiapi/gpt-4o` — OpenAI GPT-4o
+- `@openaiapi/gpt-4-turbo` — OpenAI GPT-4 Turbo
+- `@anthropicapi/claude-3-5-sonnet` — Claude Sonnet
+- `@anthropicapi/claude-3-haiku` — Claude Haiku (lightweight)
+
+### Documentation
+
+See **[PORTKEY_SETUP.md](PORTKEY_SETUP.md)** for:
+- Complete setup instructions
+- Troubleshooting guide
+- Advanced configuration
+- Cost optimization tips
+- Security considerations
+
+### Prisma AIRS Compatibility (Verified June 18, 2026)
+
+The three-stage Prisma AIRS scanning is done at the **orchestration level** in
+`chatbot_service.py` (provider-agnostic), so it applies to Portkey the same as
+other providers:
+
+- **Stage 1 (user prompt):** `chatbot_service.py:685` — runs before any provider is called. ✅
+- **Stage 2 (tool output):** `chatbot_service.py:812` — runs `if response.tool_outputs:`. ✅
+- **Stage 3 (model response):** `chatbot_service.py:841` — scans `response.assistant_message`. ✅
+
+**Critical requirement:** Each provider MUST populate `tool_outputs` in its
+`ProviderResponse` for Stage 2 to fire. `PortkeyProvider.chat()` captures each
+tool result into a `tool_outputs` dict (orchestrator/llm_providers.py:~654) and
+passes it to `ProviderResponse(tool_outputs=...)`. Without this, the dedicated
+tool-output scan is silently skipped and `tool_outputs` is not persisted for audit.
+
+**Note on agentic loop:** PortkeyProvider does NOT feed tool output back to the
+LLM for a second turn (single-shot tool execution). This means tool output never
+reaches the remote model unscanned. AnthropicProvider, which DOES loop, has an
+additional in-loop scan (llm_providers.py ~144-191). If PortkeyProvider is ever
+upgraded to a true agentic loop, it must add the same in-loop scan.
+
+---
+
 ## Next steps (not yet implemented)
 
 1. **Real disk trend tracking** — store historical `disk_size_gb` observations, compute slope instead of hardcoded 0.1 GB/day
 2. **StorageAdvisor** — real recommendations based on forecast
 3. **CostAdvisor** — real cost/impact analysis from query profiles
 4. **pgbench load test** — run from vm2, validate domain escalation
-5. **arm2 dashboard** — React/Vue frontend consuming arm1:8084 API
-6. **HITL action execution** — wire up `action_queue` approvals to actual DBA actions
-7. **Alerting** — Slack/email notifications on `critical` status
+5. **HITL action execution** — wire up `action_queue` approvals to actual DBA actions
+6. **Alerting** — Slack/email notifications on `critical` status

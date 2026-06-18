@@ -19,3 +19,6 @@ config/*.yaml
 .env.local
 .env.*.local
 secrets.json
+
+# Runtime logs
+*.log

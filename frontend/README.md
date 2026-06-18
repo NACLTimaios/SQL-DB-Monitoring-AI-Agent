@@ -1,11 +1,11 @@
 # SQL Agent Dashboard - Frontend Components
 
-This directory contains React components for the SQL Agent dashboard, including the chatbot interface and admin configuration panel.
+This directory contains React components for the SQL Agent dashboard, including the chatbot interface, admin configuration panel, and information panels.
 
 ## Components
 
 ### ChatBot.tsx
-A real-time chat interface for querying the database through Claude API.
+A real-time chat interface for querying the database through multiple LLM providers (Anthropic Claude, Google Gemini, OpenAI GPT).
 
 **Features:**
 - Send natural language questions about the database
@@ -21,6 +21,29 @@ import ChatBot from './components/ChatBot';
 // In your dashboard layout:
 <ChatBot />
 ```
+
+### ChatbotInfoBox.tsx
+Information panel for the Assistant tab showing chatbot configuration and available tools.
+
+**Features:**
+- Displays current LLM model and provider
+- Lists available database tools with descriptions
+- Shows guardrails status (write protection, DDL, timeouts, row limits)
+- Links to Admin Settings for configuration
+- Clean, dark-themed UI consistent with dashboard
+
+**Integration:**
+```tsx
+import ChatbotInfoBox from './components/ChatbotInfoBox';
+
+// Typically placed next to ChatBot in a grid:
+<div className="grid grid-cols-3 gap-4">
+  <div className="col-span-2"><ChatBot /></div>
+  <div><ChatbotInfoBox /></div>
+</div>
+```
+
+**Security Note:** Security scanning (Prisma AIRS) is configured server-side and operates transparently. The info box does not display security status — all prompts, tool outputs, and responses are scanned automatically if configured.
 
 ### AdminPage.tsx
 Configuration dashboard for the chatbot system.
@@ -210,21 +233,59 @@ curl -H "Authorization: Bearer <token>" http://localhost:8084/api/chatbot/tools
 
 ## Deployment
 
+### Prerequisites
+- SSH access to arm2 (IP: 10.0.2.11, user: ubuntu)
+- www-data ownership of /var/www/dashboard/
+- nginx reverse proxy configured
+
 ### On arm2 (Frontend Server)
 
-1. **Copy files:**
-   ```bash
-   scp -r frontend/src/components/ChatBot.tsx arm2:/path/to/dashboard/src/components/
-   scp -r frontend/src/pages/AdminPage.tsx arm2:/path/to/dashboard/src/pages/
-   ```
+**Full deployment workflow:**
 
-2. **Update App.tsx on arm2 with component imports**
-
-3. **Rebuild and redeploy:**
+1. **Build locally:**
    ```bash
+   cd /home/ubuntu/sql_agent/frontend
    npm run build
-   nginx reload
    ```
+
+2. **Create temp directory on arm2:**
+   ```bash
+   ssh ubuntu@10.0.2.11 "mkdir -p /tmp/dashboard-deploy"
+   ```
+
+3. **Copy dist files to temp directory:**
+   ```bash
+   scp -r dist/* ubuntu@10.0.2.11:/tmp/dashboard-deploy/
+   ```
+
+4. **Copy to www with proper permissions and cleanup:**
+   ```bash
+   ssh ubuntu@10.0.2.11 "sudo cp -r /tmp/dashboard-deploy/* /var/www/dashboard/ && \
+     sudo chown -R www-data:www-data /var/www/dashboard/ && \
+     rm -rf /tmp/dashboard-deploy"
+   ```
+
+5. **Reload nginx:**
+   ```bash
+   ssh ubuntu@10.0.2.11 "sudo nginx -t && sudo systemctl reload nginx"
+   ```
+
+6. **Verify deployment:**
+   - Clear browser cache
+   - Refresh https://sqlagent.dittmar.it
+   - Check that updates are visible
+
+**All-in-one deployment command:**
+```bash
+npm run build && \
+  ssh ubuntu@10.0.2.11 "mkdir -p /tmp/dashboard-deploy" && \
+  scp -r dist/* ubuntu@10.0.2.11:/tmp/dashboard-deploy/ && \
+  ssh ubuntu@10.0.2.11 "sudo cp -r /tmp/dashboard-deploy/* /var/www/dashboard/ && \
+    sudo chown -R www-data:www-data /var/www/dashboard/ && \
+    rm -rf /tmp/dashboard-deploy && \
+    sudo nginx -t && sudo systemctl reload nginx" && \
+  echo "✅ Deployment complete"
+```
 
 ## Environment Variables (Backend)
 
@@ -259,6 +320,25 @@ ANTHROPIC_API_KEY=sk-ant-...
 - Verify API key is set on backend
 - Check backend logs for errors
 
+## Recent Changes (June 2026)
+
+### UI Changes
+- **Removed security section from ChatbotInfoBox** — Security scanning (Prisma AIRS) is configured server-side and operates transparently. Users don't need to see scanner status in the UI.
+- **Assistant Info Box now shows:** Current LLM model, available tools, admin settings link
+- **Deployment:** Successfully deployed to arm2 (10.0.2.11) at /var/www/dashboard/ on June 16, 2026
+
+### Backend Security
+- **Prisma AIRS three-stage scanning:** All data exchanges (user prompts, tool outputs, LLM responses) are scanned for threats
+- **Fail-closed design:** If Prisma AIRS is unavailable, requests are blocked to prevent silent data leakage
+- **Database schema fixes:** System prompt updated with exact table definitions and critical column name notes
+
+### Architecture
+See main README.md for detailed info on:
+- Three-stage Prisma AIRS security scanning
+- Fail-closed threat response design
+- Profile name preference for reliability
+- Database schema and system prompt
+
 ## Future Enhancements
 
 - [ ] Export chat history to CSV
@@ -267,3 +347,4 @@ ANTHROPIC_API_KEY=sk-ant-...
 - [ ] Fine-tuned models for database context
 - [ ] Multi-user chat sessions
 - [ ] Analytics on chatbot usage
+- [ ] Security scanning visualization (on-demand, not real-time)

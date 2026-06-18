@@ -99,46 +99,31 @@ export default function ChatbotInfoBox() {
           <>
             {/* Model Information */}
             <div>
-              <h4 className="text-base font-semibold text-cyan-400 mb-2">Model</h4>
+              <h4 className="text-base font-semibold text-cyan-400 mb-2">
+                {config?.llm_provider === 'portkey' ? '🔀 Gateway' : 'Model'}
+              </h4>
               <div className="space-y-1">
                 <div className="text-sm text-slate-300">
                   <span className="text-slate-500">Provider:</span>{' '}
                   <span className="text-cyan-300 font-mono">
-                    {config?.llm_provider || 'Not configured'}
+                    {config?.llm_provider === 'portkey' ? 'Portkey AI Gateway' : (config?.llm_provider || 'Not configured')}
                   </span>
                 </div>
                 <div className="text-sm text-slate-300">
-                  <span className="text-slate-500">Model:</span>{' '}
+                  <span className="text-slate-500">{config?.llm_provider === 'portkey' ? 'Route:' : 'Model:'}</span>{' '}
                   <span className="text-cyan-300 font-mono text-xs break-all">
                     {config?.llm_model || 'Not configured'}
                   </span>
                 </div>
+                {config?.llm_provider === 'portkey' && (
+                  <div className="text-xs text-slate-400 mt-2 p-2 bg-slate-900/50 rounded border border-slate-700">
+                    ✓ Requests routed through Portkey AI Gateway<br/>
+                    ✓ Configured via PORTKEY_API_KEY environment variable
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Divider */}
-            <div className="border-t border-slate-700" />
-
-            {/* Security Status */}
-            <div>
-              <h4 className="text-base font-semibold text-cyan-400 mb-2">🔒 Security</h4>
-              <div className="space-y-1">
-                <div className="text-sm text-slate-300">
-                  <span className="text-slate-500">Prisma AIRS:</span>{' '}
-                  <span className={`font-semibold ${config?.prisma_airs_enabled ? 'text-green-400' : 'text-red-400'}`}>
-                    {config?.prisma_airs_enabled ? '✅ Enabled' : '❌ Disabled'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 italic mt-2">
-                  {config?.prisma_airs_enabled
-                    ? 'Scanning prompts and responses for threats'
-                    : 'Scanning disabled (demo mode)'}
-                </p>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="border-t border-slate-700" />
 
             {/* Available Tools */}
             <div>

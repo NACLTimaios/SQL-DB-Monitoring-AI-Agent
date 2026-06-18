@@ -864,7 +864,7 @@ def update_chatbot_config(
 
 
 @app.post("/api/chatbot/chat")
-def chat_with_bot(message: ChatMessage, _: str = Depends(verify_token)):
+def chat_with_bot(message: ChatMessage, username: str = Depends(verify_token)):
     """Send a message to the chatbot."""
     from store.chatbot_models import ChatbotConfig, ChatMessage as ChatMessageModel
     from orchestrator.chatbot_service import ChatbotService
@@ -892,11 +892,15 @@ def chat_with_bot(message: ChatMessage, _: str = Depends(verify_token)):
         service = ChatbotService(config, db_config)
         response = service.chat(message.message)
 
-        # Store in history
+        # Store in history with security scan results and username
         msg_record = ChatMessageModel(
+            username=username,
             user_message=message.message,
             assistant_message=response.get("assistant_message", ""),
             tools_used=response.get("tools_used", []),
+            tool_outputs=response.get("tool_outputs", {}),
+            prisma_airs_user_safe=response.get("prisma_airs_user_safe", True),
+            prisma_airs_response_safe=response.get("prisma_airs_response_safe", True),
         )
         session.add(msg_record)
         session.commit()
@@ -913,8 +917,8 @@ def chat_with_bot(message: ChatMessage, _: str = Depends(verify_token)):
 
 
 @app.get("/api/chatbot/history")
-def get_chat_history(limit: int = 50, _: str = Depends(verify_token)):
-    """Get chat message history."""
+def get_chat_history(limit: int = 50, username: str = Depends(verify_token)):
+    """Get chat message history for the current user only."""
     from store.chatbot_models import ChatMessage as ChatMessageModel
 
     session_factory = _state.get("session_factory")
@@ -923,8 +927,10 @@ def get_chat_history(limit: int = 50, _: str = Depends(verify_token)):
 
     session = session_factory()
     try:
+        # Filter by current user's username - users only see their own chat history
         messages = (
             session.query(ChatMessageModel)
+            .filter(ChatMessageModel.username == username)
             .order_by(ChatMessageModel.created_at.desc())
             .limit(limit)
             .all()
@@ -935,8 +941,8 @@ def get_chat_history(limit: int = 50, _: str = Depends(verify_token)):
 
 
 @app.delete("/api/chatbot/history")
-def clear_chat_history(_: str = Depends(verify_token)):
-    """Clear all chat message history."""
+def clear_chat_history(username: str = Depends(verify_token)):
+    """Clear chat message history for the current user only."""
     from store.chatbot_models import ChatMessage as ChatMessageModel
 
     session_factory = _state.get("session_factory")
@@ -945,9 +951,10 @@ def clear_chat_history(_: str = Depends(verify_token)):
 
     session = session_factory()
     try:
-        session.query(ChatMessageModel).delete()
+        # Only delete current user's messages
+        session.query(ChatMessageModel).filter(ChatMessageModel.username == username).delete()
         session.commit()
-        return {"message": "Chat history cleared"}
+        return {"message": "Your chat history cleared"}
     finally:
         session.close()
 
@@ -980,6 +987,14 @@ def get_available_models(provider: str = "anthropic", _: str = Depends(verify_to
             "gpt-4-turbo",
             "gpt-4o",
             "gpt-4o-mini",
+        ],
+        "portkey": [
+            "@geminiapi/gemini-2.5-flash",
+            "@geminiapi/gemini-2.5-pro",
+            "@openaiapi/gpt-4o",
+            "@openaiapi/gpt-4-turbo",
+            "@anthropicapi/claude-3-5-sonnet",
+            "@anthropicapi/claude-3-haiku",
         ],
     }
 
