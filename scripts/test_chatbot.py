@@ -11,8 +11,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 BASE_URL = "http://localhost:8084"
-USERNAME = "agentadmin"
-PASSWORD = "***REMOVED-ROTATED-CREDENTIAL***"
+USERNAME = os.environ.get("AGENT_ADMIN_USER", "agentadmin")
+# Never hardcode credentials. Provide via env: AGENT_ADMIN_PASSWORD=... python scripts/test_chatbot.py
+PASSWORD = os.environ.get("AGENT_ADMIN_PASSWORD", "")
 
 
 def test_api_health():

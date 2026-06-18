@@ -236,7 +236,7 @@ export OPENAI_API_KEY="sk-..."
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8084/api/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"agentadmin","password":"***REMOVED-ROTATED-CREDENTIAL***"}' | jq -r .access_token)
+  -d "{\"username\":\"agentadmin\",\"password\":\"$AGENT_ADMIN_PASSWORD\"}" | jq -r .access_token)
 
 curl -X POST http://localhost:8084/api/chatbot/config \
   -H "Authorization: Bearer $TOKEN" \

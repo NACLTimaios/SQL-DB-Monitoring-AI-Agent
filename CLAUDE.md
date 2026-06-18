@@ -145,12 +145,12 @@ Get token via login endpoint:
 ```bash
 curl -X POST http://localhost:8084/api/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"agentadmin","password":"***REMOVED-ROTATED-CREDENTIAL***"}'
+  -d "{\"username\":\"agentadmin\",\"password\":\"$AGENT_ADMIN_PASSWORD\"}"
 ```
 
 Credentials:
 - **Username:** `agentadmin`
-- **Password:** `***REMOVED-ROTATED-CREDENTIAL***` (hashed with argon2id)
+- **Password:** set out-of-band (never commit it); store in a password manager / `AGENT_ADMIN_PASSWORD` env var. Hashed with argon2id at rest.
 - **Token expiry:** 24 hours
 
 ---
