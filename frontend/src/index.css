@@ -7,3 +7,21 @@
     @apply bg-slate-800 rounded-lg border border-slate-700 p-4;
   }
 }
+
+/*
+ * Global readability: enlarge all buttons and headers across the app.
+ * !important is needed because Tailwind utility classes (e.g. text-sm) out-specify
+ * element selectors. Chat message bubbles are plain <div>/<p> elements (not buttons
+ * or headings), so they are intentionally NOT affected by these rules.
+ */
+button {
+  font-size: 1.15rem !important;
+  line-height: 1.5 !important;
+}
+
+h1 { font-size: 2rem !important; }
+h2 { font-size: 1.6rem !important; }
+h3 { font-size: 1.35rem !important; }
+h4 { font-size: 1.2rem !important; }
+h5 { font-size: 1.1rem !important; }
+h6 { font-size: 1.05rem !important; }
