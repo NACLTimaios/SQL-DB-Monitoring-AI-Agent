@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 interface LoginProps {
@@ -9,7 +9,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Surface why the user landed here (session expiry / inactivity sign-out).
+  useEffect(() => {
+    const reason = sessionStorage.getItem('signout_reason');
+    if (reason) {
+      setNotice(reason);
+      sessionStorage.removeItem('signout_reason');
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +49,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       <div className="w-full max-w-md">
         {/* Login Card */}
         <div className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 rounded-2xl shadow-2xl p-8 space-y-6">
+          {notice && (
+            <div className="bg-amber-900/25 border border-amber-500/40 text-amber-300 px-4 py-3 rounded-lg text-sm">
+              {notice}
+            </div>
+          )}
           {error && (
             <div className="bg-red-900/25 border border-red-500/40 text-red-300 px-4 py-3 rounded-lg text-sm">
               {error}

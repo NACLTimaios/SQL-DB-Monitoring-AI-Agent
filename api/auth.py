@@ -22,7 +22,11 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable is required for JWT authentication. Set it before starting the application.")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Reduced from 24 hours to 30 minutes for better security
+# Absolute JWT lifetime. The frontend enforces a 20-minute *inactivity* logout, so
+# the session ends after 20 min of idle regardless of this value. This is the max
+# lifetime for a continuously-active session (kept well above the inactivity window
+# so active users aren't cut off mid-session). Override via env if needed.
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 

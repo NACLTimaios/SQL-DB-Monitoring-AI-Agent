@@ -15,17 +15,24 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: on 401 (expired/invalid token), clear session and
-// redirect to login instead of leaving the UI in a silent broken state.
+// Clear the session and send the user back to the Sign In page. Works even on
+// the dashboard route ("/") by notifying the React app via a custom event, so a
+// timed-out session doesn't sit silently on a stale screen. An optional reason is
+// stashed for the login page to display.
+export function forceSignOut(reason?: string) {
+  if (reason) sessionStorage.setItem('signout_reason', reason);
+  localStorage.removeItem('access_token');
+  window.dispatchEvent(new CustomEvent('app:signout'));
+}
+
+// Response interceptor: on 401 (expired/invalid token) for an authenticated
+// session, sign out and show the login page. Skipped when there was no token
+// (e.g. a failed login attempt) so the login form can show its own error.
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      // Avoid redirect loops if already on the login screen
-      if (window.location.pathname !== '/') {
-        window.location.href = '/';
-      }
+    if (error?.response?.status === 401 && localStorage.getItem('access_token')) {
+      forceSignOut('Your session has expired. Please sign in again.');
     }
     return Promise.reject(error);
   }
@@ -79,6 +86,5 @@ export async function fetchActivity(limit: number) {
 }
 
 export function logout() {
-  localStorage.removeItem('access_token');
-  window.location.href = '/';
+  forceSignOut();
 }

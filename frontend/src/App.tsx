@@ -10,6 +10,7 @@ import {
   fetchDatabaseSummary,
   fetchInsightsPending,
   fetchActivity,
+  forceSignOut,
 } from './utils/api';
 import type {
   HealthResponse,
@@ -119,6 +120,44 @@ export default function App() {
   const handleLoginSuccess = () => {
     setAuthenticated(true);
   };
+
+  // Reflect forced sign-outs (session expiry, inactivity) in React state so the
+  // Login page is shown immediately, even while sitting on the dashboard ("/").
+  useEffect(() => {
+    const onSignout = () => setAuthenticated(false);
+    window.addEventListener('app:signout', onSignout);
+    return () => window.removeEventListener('app:signout', onSignout);
+  }, []);
+
+  // Auto sign-out after 20 minutes of inactivity. Any user activity resets the
+  // timer; only genuine inactivity triggers the logout and returns to Sign In.
+  useEffect(() => {
+    if (!authenticated) return;
+    const INACTIVITY_MS = 20 * 60 * 1000;
+    let timer: number;
+    const signOut = () =>
+      forceSignOut('You were signed out after 20 minutes of inactivity.');
+    const resetTimer = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(signOut, INACTIVITY_MS);
+    };
+    // Throttle resets so frequent events (mousemove) don't thrash the timer.
+    let lastReset = 0;
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - lastReset > 1000) {
+        lastReset = now;
+        resetTimer();
+      }
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    resetTimer();
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+    };
+  }, [authenticated]);
 
   // Browser tab: keep "Sign In" (neutral) on the auth page; show the SELECTer
   // name + logo only after login so the brand isn't exposed on the public login page.
