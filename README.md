@@ -91,6 +91,14 @@ See **[LLM_CONFIGURATION.md](LLM_CONFIGURATION.md)** for detailed setup instruct
 - Load balancing and switching models
 - Cost optimization with Portkey
 
+Portkey is the active provider. It runs a **real agentic loop** (tool results are
+sent back to the model), uses **conditional routing** (each call tagged
+`request_type: user|tool` so a Portkey Config can route them differently), and
+**relays Prisma AIRS** as a guardrail. Two env vars are required (both in `.env`,
+server-only): `PORTKEY_API_KEY` and `PORTKEY_CONFIG_ID` (the `pc-…` Config ID that
+holds the routing + AIRS rules). The Portkey Config decides the actual model, so the
+Assistant tab shows only the **Gateway**, not a specific model.
+
 ### Cost Optimization
 
 The chatbot has been optimized for cost-effective models:

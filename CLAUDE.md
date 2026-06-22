@@ -369,6 +369,58 @@ Implemented per-user chat history isolation using the authenticated username.
 
 ## Portkey AI Gateway Integration (Completed June 18, 2026)
 
+### ⚠️ Current state (supersedes the historical detail below)
+
+Portkey is the active provider and has evolved well past the original single-shot
+integration:
+
+- **Real agentic loop** in `PortkeyProvider.chat()` (native `portkey_ai` SDK): the
+  model can call tools, we execute + scan them, feed results back, and let the model
+  produce the final answer. Tool results ARE sent back to the model (not formatted
+  locally).
+- **Conditional routing**: the client attaches `config=PORTKEY_CONFIG_ID` and tags
+  each call with `metadata={"request_type": "user"|"tool"}` via `with_options()`.
+  The first call is `user`; follow-ups carrying tool results are `tool`. The Portkey
+  Config (built in the Portkey dashboard) decides the actual model — so the `model`
+  field is just a default/fallback.
+- **AIRS is now relayed by Portkey** (guardrail hook in the Config). A blocked request
+  comes back as HTTP `446` / `hooks_failed`; `PortkeyProvider` reads the full body via
+  `e.response.json()` (the SDK's `.body` drops `hook_results`), and
+  `_portkey_guardrail_message()` turns it into a coaching message (DLP, injection,
+  toxic, etc.). Returned as `stop_reason="security_block"`.
+- **Our direct three-stage AIRS scanning is now LEGACY**: admin-toggled from
+  *Admin → Chatbot Settings* (`prisma_airs_enabled`), **off by default** to avoid
+  double-scanning. The in-loop tool scan and the orchestration scans both honor this flag.
+- **Credit-card special case removed**: those queries run through the normal loop now.
+- `chatbot_service` short-circuits on any provider `security_block` (returns it
+  verbatim, skips our scans so the block message isn't re-scanned).
+
+**Required env:** `PORTKEY_API_KEY` and `PORTKEY_CONFIG_ID` (both in `.env`,
+gitignored — server-only). Changing the config = edit `.env`, restart the API.
+
+**Assistant tab UI:** the top bar shows a compact **Gateway** box (Portkey only — no
+model/route, since Portkey decides). Quick-action demo buttons sit to the right of the
+chat (Valid Request / DLP Check / Prompt Injection / Toxic) — they insert a preset
+prompt into the input without auto-sending. The per-user AIRS toggle was removed from
+this tab and lives in Admin settings.
+
+### Frontend source & deploy (IMPORTANT for future sessions)
+
+- The **canonical frontend source is local: `/home/ubuntu/sql_agent/frontend`**. The
+  copy at `arm2:~/dashboard` is **stale** (June 7, not git-tracked) — do NOT build from
+  it; it would regress recent work.
+- Deploy = build locally, then ship `dist/` to `arm2:/var/www/dashboard/`:
+  ```bash
+  cd /home/ubuntu/sql_agent/frontend && npm run build
+  tar czf /tmp/dist.tgz -C dist .
+  scp /tmp/dist.tgz ubuntu@10.0.2.11:/tmp/dist.tgz
+  ssh ubuntu@10.0.2.11 'rm -rf /tmp/dd && mkdir -p /tmp/dd && tar xzf /tmp/dist.tgz -C /tmp/dd && \
+    sudo cp -r /tmp/dd/* /var/www/dashboard/ && sudo chown -R www-data:www-data /var/www/dashboard/ && \
+    rm -rf /tmp/dd /tmp/dist.tgz && sudo systemctl reload nginx'
+  ```
+  (Plain `scp -r dist/*` intermittently glitched in this environment; the tarball path is reliable.)
+- Verify: deployed `index-*.js` hash matches local `dist/index.html`.
+
 ### Overview
 Integrated Portkey AI Gateway as a new LLM provider option. Users can now route requests through Portkey's unified API gateway instead of calling LLM providers directly.
 
