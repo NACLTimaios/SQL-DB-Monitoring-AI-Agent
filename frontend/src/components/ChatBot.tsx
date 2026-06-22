@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { client } from '../utils/api';
+import GatewayModelBox from './GatewayModelBox';
 
 interface Message {
   user_message: string;
@@ -245,6 +246,11 @@ export default function ChatBot() {
             </div>
           </button>
         ))}
+
+        {/* Active gateway, pinned below the quick-action buttons */}
+        <div className="mt-auto pt-3 border-t border-slate-700">
+          <GatewayModelBox />
+        </div>
       </aside>
     </div>
   );

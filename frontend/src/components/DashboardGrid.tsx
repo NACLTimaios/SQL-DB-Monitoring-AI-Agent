@@ -10,7 +10,6 @@ import InsightsAlerts from './widgets/InsightsAlerts';
 import ActivityFeed from './widgets/ActivityFeed';
 import PerformanceMetrics from './widgets/PerformanceMetrics';
 import ChatBot from './ChatBot';
-import GatewayModelBox from './GatewayModelBox';
 
 interface DashboardGridProps {
   healthData: any;
@@ -256,15 +255,11 @@ export default function DashboardGrid({
         </div>
       )}
 
-      {/* Chatbot Tab - Centered column: top bar (gateway/model + controls) above, chat below */}
+      {/* Chatbot Tab - Centered column. Chat + quick-actions panel (with the
+          gateway box pinned below the quick-action buttons) live inside ChatBot. */}
       {activeTab === 'chatbot' && (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="p-6 flex flex-col gap-4 flex-1 min-h-0 w-full max-w-[84rem] mx-auto">
-            {/* Top bar: gateway/model info */}
-            <div className="flex items-center gap-4 flex-wrap flex-shrink-0">
-              <GatewayModelBox />
-            </div>
-            {/* Chatbot fills the remaining space within the centered column */}
             <div className="flex-1 min-h-0">
               <ChatBot />
             </div>
