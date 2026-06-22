@@ -40,18 +40,31 @@ _AIRS_CATEGORIES = {
     ),
 }
 
-# Where in the exchange a detection fired (Portkey/AIRS detection buckets).
-_AIRS_STAGES = {
-    "prompt_detected": "your input",
-    "response_detected": "the model's response",
-    "tool_detected": "a tool result",
-}
+# AIRS detection buckets within a check's `data`.
+_AIRS_DETECTION_BUCKETS = ("prompt_detected", "response_detected", "tool_detected")
 
 
-def _portkey_guardrail_message(body) -> Optional[str]:
+def _hooks_have_detection(hooks) -> bool:
+    """True if any check in this hook group fired a detection (a True value)."""
+    for hook in hooks or []:
+        for check in hook.get("checks") or []:
+            data = check.get("data") or {}
+            for bucket in _AIRS_DETECTION_BUCKETS:
+                if any((data.get(bucket) or {}).values()):
+                    return True
+    return False
+
+
+def _portkey_guardrail_message(body, stage: Optional[str] = None) -> Optional[str]:
     """Turn a Portkey guardrail error body (hooks_failed / HTTP 446) into a
-    friendly, user-facing message describing what Prisma AIRS detected, plus
-    coaching on how to fix it. Returns None if `body` isn't a guardrail failure.
+    friendly, user-facing message that names the STAGE Portkey intercepted at and
+    what Prisma AIRS detected, plus coaching. Returns None if `body` isn't a
+    guardrail failure.
+
+    `stage` is our own request_type for the blocked call ("user" or "tool"), which
+    tells us whether the user prompt vs. a tool result was being sent. We refine it
+    with the hook phase: an after-request hook firing means the model's *response*
+    was flagged rather than the input.
     """
     if not isinstance(body, dict):
         return None
@@ -60,36 +73,50 @@ def _portkey_guardrail_message(body) -> Optional[str]:
     if not hook_results and err.get("type") != "hooks_failed":
         return None
 
-    # Walk every hook -> check -> data, collecting which categories were detected
-    # (value True) and the stage they fired in. First stage seen wins per category.
-    detected: dict[str, str] = {}
-    groups = []
-    if isinstance(hook_results, dict):
-        groups = (hook_results.get("before_request_hooks") or []) + (
-            hook_results.get("after_request_hooks") or []
-        )
-    for hook in groups:
+    before_hooks = hook_results.get("before_request_hooks") if isinstance(hook_results, dict) else None
+    after_hooks = hook_results.get("after_request_hooks") if isinstance(hook_results, dict) else None
+
+    # Collect which categories were detected (value True) across all hooks/buckets.
+    detected: list[str] = []
+    for hook in (before_hooks or []) + (after_hooks or []):
         for check in hook.get("checks") or []:
             data = check.get("data") or {}
-            for det_key, stage in _AIRS_STAGES.items():
-                for category, hit in (data.get(det_key) or {}).items():
+            for bucket in _AIRS_DETECTION_BUCKETS:
+                for category, hit in (data.get(bucket) or {}).items():
                     if hit and category not in detected:
-                        detected[category] = stage
+                        detected.append(category)
 
-    header = "🛡️ Blocked by the Portkey AI security guardrail (Prisma AIRS)."
-    if not detected:
-        return (
-            f"{header}\n\nYour request didn't pass the security checks. "
-            "Please rephrase and try again."
-        )
+    # Determine the stage. An after-request hook firing => the model's output was
+    # flagged. Otherwise it's the input we sent: the user prompt (request_type
+    # "user") or a tool/database result being fed back (request_type "tool").
+    if _hooks_have_detection(after_hooks):
+        stage_label = "MODEL RESPONSE"
+        stage_sentence = "The malicious content was detected in the model's response."
+    elif stage == "tool":
+        stage_label = "TOOL RESPONSE"
+        stage_sentence = "The malicious content was detected in a tool/database result before it reached the model."
+    elif stage == "user":
+        stage_label = "USER PROMPT"
+        stage_sentence = "The malicious content was detected in your prompt (user input)."
+    else:
+        stage_label = "REQUEST"
+        stage_sentence = "The request did not pass the security checks."
 
-    lines = [header, ""]
-    for category, stage in detected.items():
-        label, coaching = _AIRS_CATEGORIES.get(
-            category, (category, "Please rephrase your request and try again.")
-        )
-        lines.append(f"• {label} detected in {stage}.")
-        lines.append(f"  → {coaching}")
+    lines = [
+        f"🛡️ [STAGE: {stage_label}] Blocked by the Portkey AI security guardrail (Prisma AIRS).",
+        "",
+        stage_sentence,
+    ]
+
+    if detected:
+        lines.append("")
+        lines.append("Detected:")
+        for category in detected:
+            label, coaching = _AIRS_CATEGORIES.get(
+                category, (category, "Please rephrase your request and try again.")
+            )
+            lines.append(f"• {label} — {coaching}")
+
     lines.append("")
     lines.append("If you believe this was a mistake, rephrase your question and try again.")
     return "\n".join(lines)
@@ -861,9 +888,15 @@ class PortkeyProvider(LLMProvider):
                     full_body = None
             if not isinstance(full_body, dict):
                 full_body = getattr(e, "body", None)
-            guardrail_msg = _portkey_guardrail_message(full_body)
+            # request_type of the failing call tells us the stage (user prompt vs
+            # tool result being fed back).
+            blocked_stage = locals().get("request_type")
+            guardrail_msg = _portkey_guardrail_message(full_body, stage=blocked_stage)
             if guardrail_msg:
-                logger.warning("Portkey AIRS guardrail blocked the request (HTTP %s)", getattr(e, "status_code", "?"))
+                logger.warning(
+                    "Portkey AIRS guardrail blocked the request at stage=%s (HTTP %s)",
+                    blocked_stage, getattr(e, "status_code", "?"),
+                )
                 return ProviderResponse(
                     assistant_message=guardrail_msg,
                     tools_used=locals().get("tools_used", []),
