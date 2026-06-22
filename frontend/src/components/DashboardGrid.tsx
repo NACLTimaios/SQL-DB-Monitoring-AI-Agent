@@ -259,7 +259,7 @@ export default function DashboardGrid({
       {/* Chatbot Tab - Centered column: top bar (gateway/model + controls) above, chat below */}
       {activeTab === 'chatbot' && (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="p-6 flex flex-col gap-4 flex-1 min-h-0 w-full max-w-[67.2rem] mx-auto">
+          <div className="p-6 flex flex-col gap-4 flex-1 min-h-0 w-full max-w-[84rem] mx-auto">
             {/* Top bar: gateway/model info */}
             <div className="flex items-center gap-4 flex-wrap flex-shrink-0">
               <GatewayModelBox />
